@@ -528,12 +528,12 @@ export class WebSimplexClient {
   private async hmacSha256(key: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
     const cryptoKey = await crypto.subtle.importKey(
       'raw',
-      key,
+      key as BufferSource,
       { name: 'HMAC', hash: 'SHA-256' },
       false,
       ['sign']
     );
-    const signature = await crypto.subtle.sign('HMAC', cryptoKey, data);
+    const signature = await crypto.subtle.sign('HMAC', cryptoKey, data as BufferSource);
     return new Uint8Array(signature);
   }
 }
@@ -554,7 +554,7 @@ function toHex(bytes: Uint8Array): string {
 }
 
 function toBase64Url(bytes: Uint8Array): string {
-  const base64 = btoa(String.fromCharCode(...bytes));
+  const base64 = btoa(String.fromCharCode(...Array.from(bytes)));
   return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 }
 

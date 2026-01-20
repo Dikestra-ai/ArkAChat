@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, QrCode, Camera, Shield } from 'lucide-react';
+import { X, QrCode, Camera, Shield as ShieldIcon } from 'lucide-react';
 import { useChatStore } from '@/lib/storage/chatStore';
 import { simplexClient } from '@/lib/simplex/client';
+import { shieldCrypto, QRExchange } from '@/lib/shield/crypto';
 
 interface NewContactModalProps {
   onClose: () => void;
@@ -44,43 +45,16 @@ export function NewContactModal({ onClose }: NewContactModalProps) {
     setError(null);
 
     try {
-      // Generate random keys using Web Crypto API directly
-      const keyBytes = crypto.getRandomValues(new Uint8Array(32));
-      const queueId = crypto.randomUUID();
+      // Generate a temporary contact ID for this invitation
+      const tempContactId = `pending_${crypto.randomUUID()}`;
 
-      // Try to connect to SMP servers (optional)
-      let smpUri = `local://${queueId}`;
-      const connectionState = simplexClient.getState();
+      // Use Shield to generate QR invitation with proper key generation
+      const qrInvitation = await shieldCrypto.generateQRInvitation(
+        tempContactId,
+        displayName.trim()
+      );
 
-      if (connectionState === 'disconnected') {
-        try {
-          await simplexClient.connect();
-        } catch {
-          // Continue with local mode
-        }
-      }
-
-      if (simplexClient.getState() === 'connected') {
-        try {
-          const queueAddress = await simplexClient.createQueue();
-          const queueIdB64 = btoa(String.fromCharCode(...queueAddress.queueId));
-          smpUri = `smp://${queueAddress.server}#${queueIdB64}`;
-        } catch {
-          // Fall back to local mode
-        }
-      }
-
-      // Create invitation object
-      const invitation = {
-        version: 'chatguard-1.0',
-        queueId,
-        smpUri,
-        publicKey: btoa(String.fromCharCode(...keyBytes)),
-        timestamp: Date.now(),
-        displayName: displayName.trim(),
-      };
-
-      setQrData(JSON.stringify(invitation, null, 2));
+      setQrData(qrInvitation);
     } catch (err) {
       setError('Failed to generate QR code');
       console.error(err);
@@ -96,29 +70,34 @@ export function NewContactModal({ onClose }: NewContactModalProps) {
     }
 
     try {
-      const invitation = JSON.parse(qrData);
+      // Parse the Shield QR exchange data
+      const [sharedKey, metadata] = shieldCrypto.parseQRInvitation(qrData.trim());
 
       // Validate
-      if (!invitation.queueAddress || !invitation.publicKey) {
-        throw new Error('Invalid QR code');
+      if (!sharedKey || sharedKey.length !== 32) {
+        throw new Error('Invalid QR code: missing or invalid key');
       }
 
       // Check expiry (5 minutes)
-      const age = Date.now() - invitation.timestamp;
+      const timestamp = (metadata?.ts as number) || 0;
+      const age = Date.now() - timestamp;
       if (age > 5 * 60 * 1000) {
         throw new Error('QR code has expired');
       }
 
+      // Generate contact ID and import the shared key using Shield
       const contactId = crypto.randomUUID();
-      await shieldCrypto.generateSharedKey(contactId);
+      await shieldCrypto.importSharedKey(contactId, sharedKey);
+
+      // Get display name from metadata
+      const displayNameFromQR = (metadata?.name as string) || 'Unknown';
 
       addContact({
         id: contactId,
-        displayName: invitation.displayName || 'Unknown',
-        queueAddress: invitation.queueAddress,
-        sharedKeyId: `shared_key_${contactId}`,
+        displayName: displayNameFromQR,
+        simplexQueueUri: '', // Will be populated when connection is established
         createdAt: Date.now(),
-        lastMessageAt: null,
+        lastMessageAt: undefined,
         isInitiator: false,
       });
 
@@ -198,7 +177,7 @@ export function NewContactModal({ onClose }: NewContactModalProps) {
           ) : (
             <div className="space-y-4">
               <div className="flex items-center justify-center">
-                <Shield className="w-8 h-8 text-green-500" />
+                <ShieldIcon className="w-8 h-8 text-green-500" />
               </div>
 
               <p className="text-sm text-gray-600 text-center">

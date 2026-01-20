@@ -112,10 +112,18 @@ export class ShieldSimplexBridge {
     this.groupKeys = groupKeys ?? groupKeyManager;
     this.fileStorage = fileStorage ?? createEncryptedFileStorage({
       getKey: async (keyId) => {
-        // Access keys from the crypto store
+        // Access keys from the crypto store via transaction
         const db = await this.openKeyStore();
-        const record = await db.get('keys', keyId);
-        return record ? new Uint8Array(record.key) : null;
+        return new Promise((resolve, reject) => {
+          const tx = db.transaction('keys', 'readonly');
+          const store = tx.objectStore('keys');
+          const request = store.get(keyId);
+          request.onsuccess = () => {
+            const record = request.result;
+            resolve(record ? new Uint8Array(record.key) : null);
+          };
+          request.onerror = () => reject(request.error);
+        });
       },
     });
   }
@@ -780,7 +788,7 @@ export class ShieldSimplexBridge {
   }
 
   private uint8ArrayToBase64(data: Uint8Array): string {
-    return btoa(String.fromCharCode(...data));
+    return btoa(String.fromCharCode(...Array.from(data)));
   }
 
   private base64ToUint8Array(base64: string): Uint8Array {
@@ -1582,4 +1590,4 @@ export class ShieldSimplexBridge {
 export const bridge = new ShieldSimplexBridge();
 
 // Export for convenience
-export { ConnectionState } from '../simplex/client';
+export type { ConnectionState } from '../simplex/client';

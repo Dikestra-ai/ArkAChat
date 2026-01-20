@@ -272,7 +272,7 @@ export class GroupKeyManager {
   }
 
   private uint8ArrayToBase64(bytes: Uint8Array): string {
-    return btoa(String.fromCharCode(...bytes));
+    return btoa(String.fromCharCode(...Array.from(bytes)));
   }
 
   private base64ToUint8Array(base64: string): Uint8Array {

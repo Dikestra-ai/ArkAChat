@@ -104,7 +104,7 @@ interface ContactItemProps {
   contact: Contact;
   isSelected: boolean;
   unreadCount: number;
-  lastMessage?: { content: string; timestamp: number; isSent: boolean };
+  lastMessage?: { content: string; timestamp: number; isOutgoing: boolean };
   onClick: () => void;
 }
 
@@ -163,7 +163,7 @@ function ContactItem({
         <div className="flex items-center justify-between mt-1">
           <span className="text-sm text-gray-500 truncate">
             {lastMessage
-              ? `${lastMessage.isSent ? 'You: ' : ''}${lastMessage.content}`
+              ? `${lastMessage.isOutgoing ? 'You: ' : ''}${lastMessage.content}`
               : 'No messages'}
           </span>
           {unreadCount > 0 && (

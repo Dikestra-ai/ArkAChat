@@ -165,7 +165,7 @@ export class EncryptedFileStorage {
       }
     }
 
-    return new Blob([content], { type: metadata.mimeType });
+    return new Blob([content as BlobPart], { type: metadata.mimeType });
   }
 
   /**
@@ -180,7 +180,7 @@ export class EncryptedFileStorage {
       throw new Error(`File not found: ${fileRef.id}`);
     }
 
-    return new Blob([encryptedFile], { type: 'application/octet-stream' });
+    return new Blob([encryptedFile as BlobPart], { type: 'application/octet-stream' });
   }
 
   /**
@@ -349,18 +349,9 @@ export class EncryptedFileStorage {
       throw new Error(`No media key for contact: ${contactId}`);
     }
 
-    // HKDF-like derivation: HMAC(mediaKey, fileId)
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw',
-      mediaKey,
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign']
-    );
-
+    // HKDF-like derivation using Shield: HMAC(mediaKey, fileId)
     const fileIdBytes = new TextEncoder().encode(fileId);
-    const derived = await crypto.subtle.sign('HMAC', cryptoKey, fileIdBytes);
-    return new Uint8Array(derived);
+    return Shield.hmac(mediaKey, fileIdBytes);
   }
 
   private buildEncryptedFile(
@@ -441,8 +432,9 @@ export class EncryptedFileStorage {
   }
 
   private async calculateChecksum(data: Uint8Array): Promise<string> {
-    const hash = await crypto.subtle.digest('SHA-256', data);
-    return Array.from(new Uint8Array(hash))
+    // Use Shield for SHA-256 hashing
+    const hash = await Shield.sha256(data);
+    return Array.from(hash)
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('');
   }

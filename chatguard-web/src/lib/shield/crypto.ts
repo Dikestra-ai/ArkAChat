@@ -20,7 +20,7 @@ async function generateKeystream(key: Uint8Array, nonce: Uint8Array, length: num
     data.set(nonce, key.length);
     data.set(counter, key.length + nonce.length);
 
-    const block = await crypto.subtle.digest('SHA-256', data);
+    const block = await crypto.subtle.digest('SHA-256', data as BufferSource);
     keystream.set(new Uint8Array(block), i * 32);
   }
 
@@ -33,12 +33,12 @@ async function generateKeystream(key: Uint8Array, nonce: Uint8Array, length: num
 async function hmacSha256(key: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
-    key,
+    key as BufferSource,
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign']
   );
-  const signature = await crypto.subtle.sign('HMAC', cryptoKey, data);
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, data as BufferSource);
   return new Uint8Array(signature);
 }
 
@@ -46,7 +46,7 @@ async function hmacSha256(key: Uint8Array, data: Uint8Array): Promise<Uint8Array
  * SHA256 hash using Web Crypto API
  */
 async function sha256(data: Uint8Array): Promise<Uint8Array> {
-  const hash = await crypto.subtle.digest('SHA-256', data);
+  const hash = await crypto.subtle.digest('SHA-256', data as BufferSource);
   return new Uint8Array(hash);
 }
 
@@ -256,7 +256,7 @@ export class QRExchange {
    * Encode key for QR code (base64url).
    */
   static encode(key: Uint8Array): string {
-    const base64 = btoa(String.fromCharCode(...key));
+    const base64 = btoa(String.fromCharCode(...Array.from(key)));
     return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
   }
 
@@ -318,13 +318,20 @@ export const Shield = {
   },
 
   /**
+   * HMAC-SHA256.
+   */
+  async hmac(key: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
+    return hmacSha256(key, data);
+  },
+
+  /**
    * Quick encrypt with pre-shared key (AES-GCM).
    */
   async quickEncrypt(key: Uint8Array, plaintext: Uint8Array): Promise<Uint8Array> {
     const nonce = crypto.getRandomValues(new Uint8Array(12));
     const cryptoKey = await crypto.subtle.importKey(
       'raw',
-      key,
+      key as BufferSource,
       { name: 'AES-GCM' },
       false,
       ['encrypt']
@@ -332,7 +339,7 @@ export const Shield = {
     const ciphertext = await crypto.subtle.encrypt(
       { name: 'AES-GCM', iv: nonce },
       cryptoKey,
-      plaintext
+      plaintext as BufferSource
     );
     return concat(nonce, new Uint8Array(ciphertext));
   },
@@ -345,15 +352,15 @@ export const Shield = {
     const ciphertext = encrypted.slice(12);
     const cryptoKey = await crypto.subtle.importKey(
       'raw',
-      key,
+      key as BufferSource,
       { name: 'AES-GCM' },
       false,
       ['decrypt']
     );
     const plaintext = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: nonce },
+      { name: 'AES-GCM', iv: nonce as BufferSource },
       cryptoKey,
-      ciphertext
+      ciphertext as BufferSource
     );
     return new Uint8Array(plaintext);
   },
@@ -485,47 +492,90 @@ export class WebShieldCrypto {
   // Key storage using IndexedDB
   private async storeKey(keyId: string, key: Uint8Array): Promise<void> {
     const db = await this.openKeyStore();
-    await db.put('keys', { id: keyId, key: Array.from(key) });
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('keys', 'readwrite');
+      const store = tx.objectStore('keys');
+      const request = store.put({ id: keyId, key: Array.from(key) });
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
   }
 
   private async getKey(keyId: string): Promise<Uint8Array | null> {
     const db = await this.openKeyStore();
-    const record = await db.get('keys', keyId);
-    return record ? new Uint8Array(record.key) : null;
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('keys', 'readonly');
+      const store = tx.objectStore('keys');
+      const request = store.get(keyId);
+      request.onsuccess = () => {
+        const record = request.result;
+        resolve(record ? new Uint8Array(record.key) : null);
+      };
+      request.onerror = () => reject(request.error);
+    });
   }
 
   private async deleteKey(keyId: string): Promise<void> {
     const db = await this.openKeyStore();
-    await db.delete('keys', keyId);
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('keys', 'readwrite');
+      const store = tx.objectStore('keys');
+      const request = store.delete(keyId);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
   }
 
   private async saveSession(contactId: string, session: RatchetSession): Promise<void> {
     const db = await this.openKeyStore();
     const state = session.toState();
-    await db.put('sessions', {
-      id: contactId,
-      sendChain: Array.from(state.sendChain),
-      recvChain: Array.from(state.recvChain),
-      sendCounter: state.sendCounter,
-      recvCounter: state.recvCounter,
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('sessions', 'readwrite');
+      const store = tx.objectStore('sessions');
+      const request = store.put({
+        id: contactId,
+        sendChain: Array.from(state.sendChain),
+        recvChain: Array.from(state.recvChain),
+        sendCounter: state.sendCounter,
+        recvCounter: state.recvCounter,
+      });
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
     });
   }
 
   private async loadSession(contactId: string): Promise<RatchetSession | null> {
     const db = await this.openKeyStore();
-    const record = await db.get('sessions', contactId);
-    if (!record) return null;
-    return RatchetSession.fromState({
-      sendChain: new Uint8Array(record.sendChain),
-      recvChain: new Uint8Array(record.recvChain),
-      sendCounter: record.sendCounter,
-      recvCounter: record.recvCounter,
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('sessions', 'readonly');
+      const store = tx.objectStore('sessions');
+      const request = store.get(contactId);
+      request.onsuccess = () => {
+        const record = request.result;
+        if (!record) {
+          resolve(null);
+        } else {
+          resolve(RatchetSession.fromState({
+            sendChain: new Uint8Array(record.sendChain),
+            recvChain: new Uint8Array(record.recvChain),
+            sendCounter: record.sendCounter,
+            recvCounter: record.recvCounter,
+          }));
+        }
+      };
+      request.onerror = () => reject(request.error);
     });
   }
 
   private async deleteSession(contactId: string): Promise<void> {
     const db = await this.openKeyStore();
-    await db.delete('sessions', contactId);
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('sessions', 'readwrite');
+      const store = tx.objectStore('sessions');
+      const request = store.delete(contactId);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
   }
 
   private dbPromise: Promise<IDBDatabase> | null = null;
@@ -566,13 +616,13 @@ export class MediaEncryption {
   async encryptFile(file: File): Promise<Blob> {
     const plaintext = new Uint8Array(await file.arrayBuffer());
     const encrypted = await Shield.quickEncrypt(this.key, plaintext);
-    return new Blob([encrypted], { type: 'application/octet-stream' });
+    return new Blob([encrypted as BlobPart], { type: 'application/octet-stream' });
   }
 
   async decryptFile(encrypted: Blob): Promise<Blob> {
     const data = new Uint8Array(await encrypted.arrayBuffer());
     const plaintext = await Shield.quickDecrypt(this.key, data);
-    return new Blob([plaintext]);
+    return new Blob([plaintext as BlobPart]);
   }
 }
 

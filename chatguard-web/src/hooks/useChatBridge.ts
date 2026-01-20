@@ -27,11 +27,11 @@ export function useChatBridge() {
     useEffect(() => {
         if (!bridgeInstance) {
             bridgeInstance = new ShieldSimplexBridge();
-            bridgeInstance.start();
+            bridgeInstance.initialize().catch(console.error);
         }
 
         // Subscribe to connection state changes
-        const unsubscribe = bridgeInstance.onConnectionStateChange((state) => {
+        const unsubscribe = bridgeInstance.onConnectionChange((state) => {
             setConnectionState(state);
         });
 
@@ -105,7 +105,8 @@ export function useChatBridge() {
         if (!bridgeInstance) return null;
 
         try {
-            return await bridgeInstance.downloadFileDecrypted(contactId, fileId);
+            const fileRef = { id: fileId, contactId, encryptedSize: 0 };
+            return await bridgeInstance.downloadFileDecrypted(fileRef);
         } catch (error) {
             console.error('Failed to download file:', error);
             return null;
@@ -119,7 +120,8 @@ export function useChatBridge() {
         if (!bridgeInstance) return null;
 
         try {
-            return await bridgeInstance.downloadFileEncrypted(contactId, fileId);
+            const fileRef = { id: fileId, contactId, encryptedSize: 0 };
+            return await bridgeInstance.downloadFileEncrypted(fileRef);
         } catch (error) {
             console.error('Failed to download encrypted file:', error);
             return null;
