@@ -3,6 +3,7 @@ package ai.guard8.chatguard.crypto
 import ai.guard8.chatguard.model.Group
 import ai.guard8.chatguard.model.GroupKey
 import ai.guard8.chatguard.model.GroupMember
+import ai.guard8.chatguard.storage.ContactDao
 import ai.guard8.chatguard.storage.GroupDao
 import ai.guard8.shield.Shield
 import java.util.UUID
@@ -21,7 +22,8 @@ import java.util.UUID
 class GroupKeyManager(
     private val keyManager: KeyManager,
     private val shieldCrypto: ShieldCrypto,
-    private val groupDao: GroupDao
+    private val groupDao: GroupDao,
+    private val contactDao: ContactDao
 ) {
     companion object {
         const val KEY_SIZE = 32 // 256-bit keys
@@ -206,9 +208,9 @@ class GroupKeyManager(
             // Skip self (contactId is empty for self)
             if (member.contactId.isEmpty()) continue
 
-            // Check if we are initiator for this contact
-            // This would come from the contact's stored metadata
-            val isInitiator = true // TODO: get from contact
+            // Get isInitiator from contact record in database
+            val contact = contactDao.getById(member.contactId)
+            val isInitiator = contact?.isInitiator ?: true
 
             val encryptedKey = encryptKeyForMember(groupKey, member.contactId, isInitiator)
             distribution[member.contactId] = encryptedKey

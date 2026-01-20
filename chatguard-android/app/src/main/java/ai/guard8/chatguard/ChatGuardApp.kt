@@ -2,6 +2,7 @@ package ai.guard8.chatguard
 
 import android.app.Application
 import ai.guard8.chatguard.bridge.ShieldSimplexBridge
+import ai.guard8.chatguard.crypto.GroupKeyManager
 import ai.guard8.chatguard.crypto.KeyManager
 import ai.guard8.chatguard.crypto.ShieldCrypto
 import ai.guard8.chatguard.network.SimpleXClient
@@ -30,6 +31,9 @@ class ChatGuardApp : Application() {
     lateinit var fileStorage: EncryptedFileStorage
         private set
 
+    lateinit var groupKeyManager: GroupKeyManager
+        private set
+
     lateinit var bridge: ShieldSimplexBridge
         private set
 
@@ -44,13 +48,23 @@ class ChatGuardApp : Application() {
         database = ChatDatabase.getInstance(this)
         fileStorage = EncryptedFileStorage(this, keyManager)
 
-        // Create bridge
+        // Initialize group key manager with contactDao for isInitiator lookup
+        groupKeyManager = GroupKeyManager(
+            keyManager = keyManager,
+            shieldCrypto = shieldCrypto,
+            groupDao = database.groupDao(),
+            contactDao = database.contactDao()
+        )
+
+        // Create bridge with group messaging support
         bridge = ShieldSimplexBridge(
             shieldCrypto = shieldCrypto,
             simplexClient = simplexClient,
             fileStorage = fileStorage,
             messageDao = database.messageDao(),
-            contactDao = database.contactDao()
+            contactDao = database.contactDao(),
+            groupDao = database.groupDao(),
+            groupKeyManager = groupKeyManager
         )
 
         // Initialize bridge (connect to SimpleX)

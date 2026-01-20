@@ -1,9 +1,11 @@
 package ai.guard8.chatguard.crypto
 
+import ai.guard8.chatguard.model.Contact
 import ai.guard8.chatguard.model.Group
 import ai.guard8.chatguard.model.GroupKey
 import ai.guard8.chatguard.model.GroupMember
 import ai.guard8.chatguard.model.MemberRole
+import ai.guard8.chatguard.storage.ContactDao
 import ai.guard8.chatguard.storage.GroupDao
 import io.mockk.*
 import kotlinx.coroutines.runBlocking
@@ -20,6 +22,7 @@ class GroupKeyManagerTest {
     private lateinit var keyManager: KeyManager
     private lateinit var shieldCrypto: ShieldCrypto
     private lateinit var groupDao: GroupDao
+    private lateinit var contactDao: ContactDao
     private lateinit var groupKeyManager: GroupKeyManager
 
     @Before
@@ -27,11 +30,12 @@ class GroupKeyManagerTest {
         keyManager = mockk()
         shieldCrypto = mockk()
         groupDao = mockk()
+        contactDao = mockk()
 
         // Mock master key retrieval
         every { keyManager.retrieveKey("group_master_key") } returns ByteArray(32) { 0x42 }
 
-        groupKeyManager = GroupKeyManager(keyManager, shieldCrypto, groupDao)
+        groupKeyManager = GroupKeyManager(keyManager, shieldCrypto, groupDao, contactDao)
     }
 
     // ==================== Key Generation Tests ====================
@@ -254,11 +258,17 @@ class GroupKeyManagerTest {
             GroupMember(groupId, "c2", "Bob", MemberRole.MEMBER, System.currentTimeMillis(), "")
         )
 
+        // Mock contact lookups for isInitiator
+        val aliceContact = Contact("c1", "Alice", "smp://...", true, System.currentTimeMillis())
+        val bobContact = Contact("c2", "Bob", "smp://...", false, System.currentTimeMillis())
+        coEvery { contactDao.getById("c1") } returns aliceContact
+        coEvery { contactDao.getById("c2") } returns bobContact
+
         val encryptedForAlice = ByteArray(50) { 0xAA.toByte() }
         val encryptedForBob = ByteArray(50) { 0xBB.toByte() }
 
         every { shieldCrypto.encryptMessage("c1", true, any()) } returns encryptedForAlice
-        every { shieldCrypto.encryptMessage("c2", true, any()) } returns encryptedForBob
+        every { shieldCrypto.encryptMessage("c2", false, any()) } returns encryptedForBob
 
         val distribution = groupKeyManager.prepareKeyDistribution(groupId, members, groupKey)
 
@@ -278,5 +288,26 @@ class GroupKeyManagerTest {
         val distribution = groupKeyManager.prepareKeyDistribution(groupId, members, groupKey)
 
         assertTrue("Should not include self", distribution.isEmpty())
+    }
+
+    @Test
+    fun `prepareKeyDistribution uses correct isInitiator from contact`() = runBlocking {
+        val groupId = "test-group-1"
+        val groupKey = ByteArray(32) { it.toByte() }
+        val members = listOf(
+            GroupMember(groupId, "c1", "Alice", MemberRole.MEMBER, System.currentTimeMillis(), "")
+        )
+
+        // Alice's contact has isInitiator = false (she initiated contact with us)
+        val aliceContact = Contact("c1", "Alice", "smp://...", false, System.currentTimeMillis())
+        coEvery { contactDao.getById("c1") } returns aliceContact
+
+        val encryptedKey = ByteArray(50) { 0xAA.toByte() }
+        every { shieldCrypto.encryptMessage("c1", false, any()) } returns encryptedKey
+
+        groupKeyManager.prepareKeyDistribution(groupId, members, groupKey)
+
+        // Verify that encryptMessage was called with isInitiator = false (from contact)
+        verify { shieldCrypto.encryptMessage("c1", false, any()) }
     }
 }

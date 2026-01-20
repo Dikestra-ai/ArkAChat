@@ -14,10 +14,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.OutputStream
-import java.security.MessageDigest
 import java.util.UUID
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
 
 /**
  * Encrypted file metadata.
@@ -317,10 +314,8 @@ class EncryptedFileStorage(
         val mediaKey = keyManager.retrieveKey("media_key_$contactId")
             ?: throw IllegalStateException("No media key for contact: $contactId")
 
-        // HKDF-like derivation: HMAC(mediaKey, fileId)
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(mediaKey, "HmacSHA256"))
-        return mac.doFinal(fileId.toByteArray(Charsets.UTF_8))
+        // HKDF-like derivation using Shield: HMAC(mediaKey, fileId)
+        return Shield.hmacSha256(mediaKey, fileId.toByteArray(Charsets.UTF_8))
     }
 
     private fun readHeader(
@@ -371,15 +366,10 @@ class EncryptedFileStorage(
     }
 
     private fun calculateChecksum(file: File): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        FileInputStream(file).use { fis ->
-            val buffer = ByteArray(8192)
-            var bytesRead: Int
-            while (fis.read(buffer).also { bytesRead = it } != -1) {
-                digest.update(buffer, 0, bytesRead)
-            }
-        }
-        return digest.digest().joinToString("") { "%02x".format(it) }
+        // Use Shield for SHA-256 hashing - read file and hash with Shield
+        val fileBytes = file.readBytes()
+        val hash = Shield.sha256(fileBytes)
+        return hash.joinToString("") { "%02x".format(it) }
     }
 
     private fun intToLittleEndian(value: Int): ByteArray {
