@@ -1,8 +1,9 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
-    id("org.jetbrains.kotlin.plugin.serialization") version "1.9.22"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.1.0"
 }
 
 android {
@@ -50,10 +51,6 @@ android {
         compose = true
     }
 
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.8"
-    }
-
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -62,8 +59,8 @@ android {
 }
 
 dependencies {
-    // Shield library (local module from /data/git/Guard8.ai/Shield/kotlin)
-    implementation(project(":shield"))
+    // Shield library - using pre-built JAR (workaround for root-owned build directory)
+    implementation(files("../../../Shield/kotlin/build/libs/shield-1.0.0.jar"))
 
     // Core Android
     implementation("androidx.core:core-ktx:1.12.0")

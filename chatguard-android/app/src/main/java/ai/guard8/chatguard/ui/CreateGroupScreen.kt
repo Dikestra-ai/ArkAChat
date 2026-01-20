@@ -272,5 +272,5 @@ private fun ContactSelectItem(
             }
         }
     }
-    HorizontalDivider()
+    Divider()
 }

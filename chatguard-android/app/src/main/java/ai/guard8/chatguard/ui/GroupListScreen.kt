@@ -183,7 +183,7 @@ private fun GroupItem(
             }
         }
     }
-    HorizontalDivider(modifier = Modifier.padding(start = 80.dp))
+    Divider(modifier = Modifier.padding(start = 80.dp))
 }
 
 private fun formatTime(timestamp: Long): String {

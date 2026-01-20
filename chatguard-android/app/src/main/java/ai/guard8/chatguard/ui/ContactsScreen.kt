@@ -203,7 +203,7 @@ fun ConversationItem(
                 ) {
                     Text(
                         text = item.lastMessage?.let {
-                            if (it.isSent) "You: ${it.content}" else it.content
+                            if (it.isOutgoing) "You: ${it.content}" else it.content
                         } ?: "No messages",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -231,7 +231,7 @@ fun ConversationItem(
         }
     }
 
-    HorizontalDivider(
+    Divider(
         modifier = Modifier.padding(start = 88.dp),
         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
     )

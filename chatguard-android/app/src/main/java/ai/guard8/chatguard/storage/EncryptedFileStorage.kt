@@ -390,37 +390,23 @@ class EncryptedFileStorage(
 }
 
 /**
- * Extension to create StreamCipher that encrypts from InputStream to OutputStream.
+ * Extension to encrypt from InputStream to OutputStream using StreamCipher.
+ * StreamCipher handles chunking internally for efficiency.
  */
 private fun StreamCipher.encryptStream(input: InputStream, output: OutputStream) {
-    val buffer = ByteArray(65536)  // 64KB chunks
-    var bytesRead: Int
-    while (input.read(buffer).also { bytesRead = it } != -1) {
-        val chunk = if (bytesRead == buffer.size) buffer else buffer.copyOf(bytesRead)
-        val encrypted = this.encryptChunk(chunk)
-        output.write(encrypted)
-    }
-    // Write final block
-    val finalBlock = this.finishEncrypt()
-    if (finalBlock.isNotEmpty()) {
-        output.write(finalBlock)
-    }
+    // Read entire input (StreamCipher handles chunking internally)
+    val plaintext = input.readBytes()
+    val encrypted = this.encrypt(plaintext)
+    output.write(encrypted)
 }
 
 /**
- * Extension to create StreamCipher that decrypts from InputStream to OutputStream.
+ * Extension to decrypt from InputStream to OutputStream using StreamCipher.
+ * StreamCipher handles chunking internally for efficiency.
  */
 private fun StreamCipher.decryptStream(input: InputStream, output: OutputStream) {
-    val buffer = ByteArray(65536 + 16)  // 64KB + auth tag
-    var bytesRead: Int
-    while (input.read(buffer).also { bytesRead = it } != -1) {
-        val chunk = if (bytesRead == buffer.size) buffer else buffer.copyOf(bytesRead)
-        val decrypted = this.decryptChunk(chunk)
-        output.write(decrypted)
-    }
-    // Verify and write final block
-    val finalBlock = this.finishDecrypt()
-    if (finalBlock.isNotEmpty()) {
-        output.write(finalBlock)
-    }
+    // Read entire input (StreamCipher handles chunking internally)
+    val ciphertext = input.readBytes()
+    val decrypted = this.decrypt(ciphertext)
+    output.write(decrypted)
 }

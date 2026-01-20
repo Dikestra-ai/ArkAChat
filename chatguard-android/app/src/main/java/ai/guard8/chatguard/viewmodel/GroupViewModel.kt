@@ -186,7 +186,7 @@ class GroupListViewModel(
     val groups: StateFlow<List<Group>> = bridge.getGroups()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val contacts: StateFlow<List<Contact>> = database.contactDao().getAllContactsFlow()
+    val contacts: StateFlow<List<Contact>> = database.contactDao().getAllContacts()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _isCreating = MutableStateFlow(false)

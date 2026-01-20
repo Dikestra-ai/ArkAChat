@@ -51,17 +51,17 @@ class MessageSyncService : Service() {
         (application as ChatGuardApp).simplexClient.disconnect()
     }
 
-    private suspend fun handleIncomingMessage(encryptedMessage: EncryptedMessage) {
+    private suspend fun handleIncomingMessage(smpMessage: SMPMessage) {
         val app = application as ChatGuardApp
 
-        // Find contact by queue ID
-        val contact = app.database.contactDao().getByQueueId(encryptedMessage.queueId)
+        // Find contact by queue URI
+        val queueUri = smpMessage.queueAddress.toUri()
+        val contact = app.database.contactDao().getBySimplexQueueUri(queueUri)
             ?: return
 
-        // Decrypt message
-        val session = app.shieldCrypto.getSession(contact.id, contact.isInitiator)
+        // Decrypt message using Shield
         val plaintext = try {
-            session.decryptMessage(encryptedMessage.ciphertext)
+            app.shieldCrypto.decryptMessage(contact.id, contact.isInitiator, smpMessage.ciphertext)
         } catch (e: Exception) {
             return
         }
@@ -71,14 +71,14 @@ class MessageSyncService : Service() {
             id = java.util.UUID.randomUUID().toString(),
             contactId = contact.id,
             content = plaintext,
-            timestamp = encryptedMessage.timestamp,
-            isSent = false,
-            isDelivered = true
+            timestamp = smpMessage.timestamp,
+            isOutgoing = false,
+            status = ai.guard8.chatguard.model.MessageStatus.DELIVERED
         )
         app.database.messageDao().insert(message)
 
         // Update contact last message time
-        app.database.contactDao().updateLastMessageAt(contact.id, encryptedMessage.timestamp)
+        app.database.contactDao().updateLastMessageAt(contact.id, smpMessage.timestamp)
 
         // Show notification
         showMessageNotification(contact.displayName, plaintext)

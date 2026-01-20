@@ -11,10 +11,10 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface ContactDao {
 
-    @Query("SELECT * FROM contacts WHERE isBlocked = 0 ORDER BY lastMessageAt DESC NULLS LAST")
+    @Query("SELECT * FROM contacts WHERE isBlocked = 0 ORDER BY COALESCE(lastMessageAt, 0) DESC")
     fun getAllContacts(): Flow<List<Contact>>
 
-    @Query("SELECT * FROM contacts ORDER BY lastMessageAt DESC NULLS LAST")
+    @Query("SELECT * FROM contacts ORDER BY COALESCE(lastMessageAt, 0) DESC")
     fun getAllContactsIncludingBlocked(): Flow<List<Contact>>
 
     @Query("SELECT * FROM contacts WHERE id = :contactId")

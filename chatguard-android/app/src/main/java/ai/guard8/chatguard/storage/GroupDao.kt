@@ -26,7 +26,7 @@ interface GroupDao {
     @Query("SELECT * FROM groups WHERE id = :groupId")
     fun getGroupByIdFlow(groupId: String): Flow<Group?>
 
-    @Query("SELECT * FROM groups ORDER BY lastMessageAt DESC NULLS LAST")
+    @Query("SELECT * FROM groups ORDER BY COALESCE(lastMessageAt, 0) DESC")
     fun getAllGroups(): Flow<List<Group>>
 
     @Query("UPDATE groups SET lastMessageAt = :timestamp WHERE id = :groupId")

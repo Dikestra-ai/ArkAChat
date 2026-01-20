@@ -18,6 +18,7 @@ dependencyResolutionManagement {
 rootProject.name = "ChatGuard"
 include(":app")
 
-// Include local Shield library
-include(":shield")
-project(":shield").projectDir = file("../../Shield/kotlin")
+// Shield library is now included via pre-built JAR in app/build.gradle.kts
+// (Workaround for root-owned build directory issue)
+// include(":shield")
+// project(":shield").projectDir = file("../../Shield/kotlin")
