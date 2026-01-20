@@ -1,0 +1,178 @@
+{
+  "version": "1.0",
+  "description": "Cross-platform test vectors for Shield encryption compatibility",
+  "generated": "2026-01-20T21:00:00Z",
+
+  "ratchetSession": {
+    "description": "Test vectors for RatchetSession encryption/decryption",
+    "rootKey": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "messages": [
+      {
+        "index": 0,
+        "plaintext": "Hello, quantum-safe world!",
+        "plaintextHex": "48656c6c6f2c207175616e74756d2d7361666520776f726c6421",
+        "note": "Test encryption from both sides - ciphertext will differ due to nonce but should decrypt correctly"
+      },
+      {
+        "index": 1,
+        "plaintext": "This is a longer message to test the encryption of multi-block data across the ratchet session.",
+        "plaintextHex": "5468697320697320612066756c6c792d666f726d65642045323530302d736563757265206d6573736167652077697468206d756c7469706c6520626c6f636b7320616e64207261746368657420737461746520757064617465732e"
+      },
+      {
+        "index": 2,
+        "plaintext": "Short",
+        "plaintextHex": "53686f7274"
+      },
+      {
+        "index": 3,
+        "plaintext": "Unicode test: Hello \u4e16\u754c \ud83d\udd10",
+        "plaintextHex": "556e69636f646520746573743a2048656c6c6f20e4b896e7958c20f09f9490"
+      }
+    ]
+  },
+
+  "qrExchange": {
+    "description": "Test vectors for QR code invitation format",
+    "testCases": [
+      {
+        "shieldKey": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+        "simplexUri": "smp://PQUV2eL0t7OStZOoAsPEV2QYWt4-xilbakvGUGOItUo=@smp6.simplex.im/queue123#recipientKey/senderKey",
+        "displayName": "Alice",
+        "timestamp": 1705780000000,
+        "expectedFormat": {
+          "version": 1,
+          "hasShieldKey": true,
+          "hasSimplexUri": true,
+          "hasDisplayName": true,
+          "hasTimestamp": true
+        }
+      },
+      {
+        "shieldKey": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+        "simplexUri": "smp://hpq7_4gGJiilmz5Rf-CswuU5kZGkm_zOIooSw6yALRg=@smp5.simplex.im/queue456#key1/key2",
+        "displayName": "Bob's Device",
+        "timestamp": 1705780060000,
+        "expectedFormat": {
+          "version": 1,
+          "hasShieldKey": true,
+          "hasSimplexUri": true,
+          "hasDisplayName": true,
+          "hasTimestamp": true
+        }
+      }
+    ]
+  },
+
+  "quickEncrypt": {
+    "description": "Test vectors for single-shot encryption (StreamCipher)",
+    "testCases": [
+      {
+        "key": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+        "plaintext": "Test message for quick encrypt",
+        "plaintextHex": "54657374206d65737361676520666f7220717569636b20656e6372797074",
+        "nonce": "000102030405060708090a0b",
+        "note": "Ciphertext will be deterministic given same key+nonce"
+      },
+      {
+        "key": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "plaintext": "All-F key test",
+        "plaintextHex": "416c6c2d46206b657920746573742e",
+        "nonce": "aabbccddeeff00112233445566",
+        "note": "Edge case: all-ones key"
+      },
+      {
+        "key": "0000000000000000000000000000000000000000000000000000000000000000",
+        "plaintext": "Zero key test (for testing only - never use in production)",
+        "plaintextHex": "5a65726f206b65792074657374",
+        "nonce": "000000000000000000000000",
+        "note": "Edge case: all-zeros key (testing only)"
+      }
+    ]
+  },
+
+  "fileEncryption": {
+    "description": "Test vectors for encrypted file format",
+    "magicHeader": "SHLD_ENC",
+    "version": 1,
+    "testCases": [
+      {
+        "contactMediaKey": "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899",
+        "fileId": "file-001",
+        "originalName": "test-image.png",
+        "mimeType": "image/png",
+        "originalSize": 1024,
+        "plaintextContent": "PNG file content placeholder (base64 in real test)",
+        "note": "Verify file key derivation: file_key = HKDF(media_key, file_id)"
+      },
+      {
+        "contactMediaKey": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+        "fileId": "file-002",
+        "originalName": "document.pdf",
+        "mimeType": "application/pdf",
+        "originalSize": 50000,
+        "plaintextContent": "PDF file content placeholder",
+        "note": "Larger file test"
+      }
+    ]
+  },
+
+  "messageEnvelope": {
+    "description": "Test vectors for message envelope JSON format",
+    "testCases": [
+      {
+        "type": "TEXT",
+        "messageId": "msg-12345",
+        "timestamp": 1705780000000,
+        "content": "Hello!",
+        "fileId": null,
+        "fileMetadata": null,
+        "replyToId": null,
+        "expectedJson": "{\"type\":\"TEXT\",\"messageId\":\"msg-12345\",\"timestamp\":1705780000000,\"content\":\"Hello!\"}"
+      },
+      {
+        "type": "FILE",
+        "messageId": "msg-12346",
+        "timestamp": 1705780001000,
+        "content": null,
+        "fileId": "file-001",
+        "fileMetadata": {
+          "name": "photo.jpg",
+          "mimeType": "image/jpeg",
+          "size": 2048
+        },
+        "replyToId": null
+      },
+      {
+        "type": "DELIVERY_RECEIPT",
+        "messageId": "msg-12347",
+        "timestamp": 1705780002000,
+        "content": null,
+        "fileId": null,
+        "fileMetadata": null,
+        "replyToId": "msg-12345"
+      },
+      {
+        "type": "READ_RECEIPT",
+        "messageId": "msg-12348",
+        "timestamp": 1705780003000,
+        "content": null,
+        "fileId": null,
+        "fileMetadata": null,
+        "replyToId": "msg-12345"
+      }
+    ]
+  },
+
+  "crossPlatformCompatibility": {
+    "description": "Specific test cases for Android <-> Web compatibility",
+    "note": "These vectors should be generated by running one platform and verified on the other",
+    "androidGenerated": {
+      "testMessage": "Generated by Android Shield",
+      "note": "Fill in after generating on Android device"
+    },
+    "webGenerated": {
+      "testMessage": "Generated by Web Shield",
+      "note": "Fill in after generating in browser"
+    }
+  }
+}

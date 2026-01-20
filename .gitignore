@@ -1,0 +1,30 @@
+# TaskGuard
+.taskguard/state/
+
+# DOMGuard
+.domguard/screenshots/
+.domguard/inspirations/
+
+# Android
+chatguard-android/.gradle/
+chatguard-android/build/
+chatguard-android/app/build/
+chatguard-android/local.properties
+chatguard-android/*.iml
+chatguard-android/.idea/
+
+# Web
+chatguard-web/node_modules/
+chatguard-web/.next/
+chatguard-web/out/
+
+# Desktop
+chatguard-desktop/node_modules/
+chatguard-desktop/dist/
+chatguard-desktop/renderer/
+
+# General
+*.log
+.DS_Store
+.env
+.env.local
