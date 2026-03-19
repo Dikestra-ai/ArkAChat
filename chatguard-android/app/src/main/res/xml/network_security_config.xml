@@ -7,6 +7,10 @@
     </base-config>
     <domain-config cleartextTrafficPermitted="false">
         <domain includeSubdomains="true">simplex.im</domain>
+        <pin-set expiration="2027-01-01">
+            <pin digest="SHA-256">sFbsmFMBEWvgBjBSsHB9yOGtZ0GkLSN8YiHhNAOk1ys=</pin>
+            <pin digest="SHA-256">jQJTbIh0grw0/1TkHSumWb+Fs0Ggogr621gT3PvPKG0=</pin>
+        </pin-set>
         <domain includeSubdomains="true">guard8.ai</domain>
     </domain-config>
 </network-security-config>

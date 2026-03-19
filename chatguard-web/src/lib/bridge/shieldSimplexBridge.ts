@@ -49,6 +49,7 @@ export enum MessageType {
   DELIVERY_RECEIPT = 'DELIVERY_RECEIPT',
   READ_RECEIPT = 'READ_RECEIPT',
   TYPING = 'TYPING',
+  DUMMY = 'DUMMY',
 }
 
 /**
@@ -623,6 +624,9 @@ export class ShieldSimplexBridge {
           break;
         case MessageType.TYPING:
           // Handle typing indicator
+          break;
+        case MessageType.DUMMY:
+          // Silently discard dummy traffic
           break;
       }
 

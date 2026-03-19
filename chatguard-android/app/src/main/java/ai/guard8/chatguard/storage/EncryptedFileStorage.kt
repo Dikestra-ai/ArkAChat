@@ -2,8 +2,8 @@ package ai.guard8.chatguard.storage
 
 import android.content.Context
 import ai.guard8.chatguard.crypto.KeyManager
-import ai.guard8.shield.Shield
-import ai.guard8.shield.StreamCipher
+import ai.dikestra.shield.Shield
+import ai.dikestra.shield.StreamCipher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -314,8 +314,10 @@ class EncryptedFileStorage(
         val mediaKey = keyManager.retrieveKey("media_key_$contactId")
             ?: throw IllegalStateException("No media key for contact: $contactId")
 
-        // HKDF-like derivation using Shield: HMAC(mediaKey, fileId)
-        return Shield.hmacSha256(mediaKey, fileId.toByteArray(Charsets.UTF_8))
+        // Derive file key using Shield encryption (encrypt fileId, take first 32 bytes as derived key)
+        val encrypted = Shield.quickEncrypt(mediaKey, fileId.toByteArray(Charsets.UTF_8))
+        // Skip nonce(16), take next 32 bytes of encrypted data as derived key
+        return encrypted.copyOfRange(16, 48)
     }
 
     private fun readHeader(
@@ -345,6 +347,7 @@ class EncryptedFileStorage(
             // Decrypt metadata
             val fileKey = deriveFileKey(contactId, fileId)
             val metadataJson = Shield.quickDecrypt(fileKey, encryptedMetadata)
+                ?: throw IllegalStateException("Failed to decrypt file metadata")
             val metadata = json.decodeFromString<FileMetadata>(String(metadataJson, Charsets.UTF_8))
 
             val contentOffset = HEADER_SIZE + metadataLength
@@ -366,10 +369,16 @@ class EncryptedFileStorage(
     }
 
     private fun calculateChecksum(file: File): String {
-        // Use Shield for SHA-256 hashing - read file and hash with Shield
-        val fileBytes = file.readBytes()
-        val hash = Shield.sha256(fileBytes)
-        return hash.joinToString("") { "%02x".format(it) }
+        // Calculate SHA-256 checksum of file content
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(8192)
+            var bytesRead: Int
+            while (input.read(buffer).also { bytesRead = it } != -1) {
+                md.update(buffer, 0, bytesRead)
+            }
+        }
+        return md.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun intToLittleEndian(value: Int): ByteArray {

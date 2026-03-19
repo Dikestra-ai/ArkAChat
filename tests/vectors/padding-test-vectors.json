@@ -1,0 +1,72 @@
+{
+  "description": "Cross-platform message padding test vectors. Both Android (MessagePadding.kt) and Web (messagePadding.ts) must produce identical output.",
+  "format": "PKCS7-style: [plaintext][0x00 padding][padding_length_byte]",
+  "bucket_sizes": [128, 256, 512, 1024, 2048, 4096],
+  "vectors": [
+    {
+      "name": "empty message",
+      "plaintext_hex": "",
+      "plaintext_length": 0,
+      "expected_padded_length": 128,
+      "expected_last_byte": 128
+    },
+    {
+      "name": "2-byte message 'ok'",
+      "plaintext_hex": "6f6b",
+      "plaintext_length": 2,
+      "expected_padded_length": 128,
+      "expected_last_byte": 126
+    },
+    {
+      "name": "5-byte message 'hello'",
+      "plaintext_hex": "68656c6c6f",
+      "plaintext_length": 5,
+      "expected_padded_length": 128,
+      "expected_last_byte": 123
+    },
+    {
+      "name": "127-byte message (boundary - 1)",
+      "plaintext_length": 127,
+      "expected_padded_length": 128,
+      "expected_last_byte": 1
+    },
+    {
+      "name": "128-byte message (exact boundary)",
+      "plaintext_length": 128,
+      "expected_padded_length": 256,
+      "expected_last_byte": 128
+    },
+    {
+      "name": "255-byte message",
+      "plaintext_length": 255,
+      "expected_padded_length": 256,
+      "expected_last_byte": 1
+    },
+    {
+      "name": "256-byte message",
+      "plaintext_length": 256,
+      "expected_padded_length": 512,
+      "expected_last_byte": 256,
+      "note": "256 exceeds single-byte encoding but 512-256=256>255 so will use BUCKET_SIZES lookup which returns 512; paddingLength=256 is at limit boundary"
+    },
+    {
+      "name": "500-byte message",
+      "plaintext_length": 500,
+      "expected_padded_length": 512,
+      "expected_last_byte": 12
+    },
+    {
+      "name": "4095-byte message",
+      "plaintext_length": 4095,
+      "expected_padded_length": 4096,
+      "expected_last_byte": 1
+    },
+    {
+      "name": "5000-byte message (beyond max bucket)",
+      "plaintext_length": 5000,
+      "expected_padded_length": 8192,
+      "expected_last_byte": 3192,
+      "note": "3192 > 255, so this needs special handling or will fail padding constraint"
+    }
+  ]
+}

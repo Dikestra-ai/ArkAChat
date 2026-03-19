@@ -1,3 +1,4 @@
+import { pad, unpad } from './messagePadding';
 import { Shield, shieldCrypto } from '../shield/crypto';
 import { useGroupStore, type Group, type GroupKey } from '../storage/groupStore';
 
@@ -21,7 +22,7 @@ export class GroupKeyManager {
   /**
    * Generate a new random group key.
    */
-  generateGroupKey(): Uint8Array {
+  async generateGroupKey(): Promise<Uint8Array> {
     return Shield.randomBytes(KEY_SIZE);
   }
 
@@ -37,7 +38,7 @@ export class GroupKeyManager {
    * Returns the group key ID and encrypted key for storage.
    */
   async createGroupKey(groupId: string): Promise<GroupKey> {
-    const key = this.generateGroupKey();
+    const key = await this.generateGroupKey();
     const keyId = this.generateKeyId();
 
     // Encrypt the key with device master key for local storage
@@ -62,7 +63,7 @@ export class GroupKeyManager {
    * Returns the new GroupKey to distribute to remaining members.
    */
   async rotateKey(group: Group): Promise<GroupKey> {
-    const newKey = this.generateGroupKey();
+    const newKey = await this.generateGroupKey();
     const keyId = this.generateKeyId();
     const encryptedKey = await this.encryptKeyForStorage(newKey);
 
@@ -119,7 +120,8 @@ export class GroupKeyManager {
     if (!key) {
       throw new Error(`No group key found for group: ${groupId}`);
     }
-    return Shield.quickEncrypt(key, plaintext);
+    const padded = pad(plaintext);
+    return Shield.quickEncrypt(key, padded);
   }
 
   /**
@@ -136,7 +138,8 @@ export class GroupKeyManager {
     }
 
     const key = await this.decryptKeyFromStorage(new Uint8Array(groupKey.encryptedKey));
-    return Shield.quickDecrypt(key, ciphertext);
+    const padded = await Shield.quickDecrypt(key, ciphertext);
+    return unpad(padded);
   }
 
   /**
@@ -208,7 +211,7 @@ export class GroupKeyManager {
     }
 
     // Generate new master key
-    const newKey = Shield.randomBytes(KEY_SIZE);
+    const newKey = await Shield.randomBytes(KEY_SIZE);
     await this.saveMasterKey(newKey);
     this.masterKey = newKey;
     return newKey;

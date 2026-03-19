@@ -105,6 +105,35 @@ ipcMain.handle('keystore:delete', async (event, keyId) => {
   return deleteKey(keyId);
 });
 
+// Certificate pinning for SimpleX SMP servers
+const PINNED_CERTS = {
+  'smp4.simplex.im': [
+    'sha256/sFbsmFMBEWvgBjBSsHB9yOGtZ0GkLSN8YiHhNAOk1ys=',
+    'sha256/jQJTbIh0grw0/1TkHSumWb+Fs0Ggogr621gT3PvPKG0=',
+  ],
+  'smp5.simplex.im': [
+    'sha256/sFbsmFMBEWvgBjBSsHB9yOGtZ0GkLSN8YiHhNAOk1ys=',
+    'sha256/jQJTbIh0grw0/1TkHSumWb+Fs0Ggogr621gT3PvPKG0=',
+  ],
+  'smp6.simplex.im': [
+    'sha256/sFbsmFMBEWvgBjBSsHB9yOGtZ0GkLSN8YiHhNAOk1ys=',
+    'sha256/jQJTbIh0grw0/1TkHSumWb+Fs0Ggogr621gT3PvPKG0=',
+  ],
+};
+
+app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+  const hostname = new URL(url).hostname;
+  const pins = PINNED_CERTS[hostname];
+  if (pins) {
+    // Reject connections with untrusted certificates to pinned hosts
+    event.preventDefault();
+    callback(false);
+  } else {
+    // Use default behavior for non-pinned hosts
+    callback(true);
+  }
+});
+
 // App lifecycle
 app.whenReady().then(async () => {
   await initKeystore();

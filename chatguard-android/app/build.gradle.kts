@@ -59,8 +59,8 @@ android {
 }
 
 dependencies {
-    // Shield library - using pre-built JAR (workaround for root-owned build directory)
-    implementation(files("../../../Shield/kotlin/build/libs/shield-1.0.0.jar"))
+    // Shield library (imported via composite build from Shield/android)
+    implementation("ai.dikestra:shield")
 
     // Core Android
     implementation("androidx.core:core-ktx:1.12.0")

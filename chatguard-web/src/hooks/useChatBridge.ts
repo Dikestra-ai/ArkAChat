@@ -1,17 +1,12 @@
 import { useEffect, useCallback, useMemo } from 'react';
 import { useChatStore, Contact, Message, MessageStatus, ConnectionState } from '@/lib/storage/chatStore';
-import { ShieldSimplexBridge } from '@/lib/bridge/shieldSimplexBridge';
-
-let bridgeInstance: ShieldSimplexBridge | null = null;
+import { getBridgeInstance } from '@/components/BridgeProvider';
 
 /**
  * Hook to access the ShieldSimplexBridge for encrypted messaging.
  *
- * This hook provides:
- * - Access to contacts and messages from the store
- * - Methods to send messages and files
- * - Methods to create and accept contact invitations
- * - Connection state management
+ * Bridge is initialized eagerly by BridgeProvider in layout.tsx.
+ * This hook provides access to bridge methods and store state.
  */
 export function useChatBridge() {
     const contacts = useChatStore((state) => state.contacts);
@@ -23,31 +18,15 @@ export function useChatBridge() {
     const setConnectionState = useChatStore((state) => state.setConnectionState);
     const getMessagesForContactFromStore = useChatStore((state) => state.getMessagesForContact);
 
-    // Initialize bridge on first use
-    useEffect(() => {
-        if (!bridgeInstance) {
-            bridgeInstance = new ShieldSimplexBridge();
-            bridgeInstance.initialize().catch(console.error);
-        }
-
-        // Subscribe to connection state changes
-        const unsubscribe = bridgeInstance.onConnectionChange((state) => {
-            setConnectionState(state);
-        });
-
-        return () => {
-            unsubscribe?.();
-        };
-    }, [setConnectionState]);
-
     /**
      * Send a text message to a contact
      */
     const sendMessage = useCallback(async (contactId: string, text: string): Promise<Message | null> => {
-        if (!bridgeInstance) return null;
+        const bridge = getBridgeInstance();
+        if (!bridge) return null;
 
         try {
-            const message = await bridgeInstance.sendTextMessage(contactId, text);
+            const message = await bridge.sendTextMessage(contactId, text);
             return message;
         } catch (error) {
             console.error('Failed to send message:', error);
@@ -59,10 +38,11 @@ export function useChatBridge() {
      * Send a file to a contact
      */
     const sendFile = useCallback(async (contactId: string, file: File): Promise<Message | null> => {
-        if (!bridgeInstance) return null;
+        const bridge = getBridgeInstance();
+        if (!bridge) return null;
 
         try {
-            const { message } = await bridgeInstance.sendFile(contactId, file);
+            const { message } = await bridge.sendFile(contactId, file);
             return message;
         } catch (error) {
             console.error('Failed to send file:', error);
@@ -74,10 +54,11 @@ export function useChatBridge() {
      * Create an invitation QR code for a new contact
      */
     const createInvitation = useCallback(async (displayName: string): Promise<string | null> => {
-        if (!bridgeInstance) return null;
+        const bridge = getBridgeInstance();
+        if (!bridge) return null;
 
         try {
-            return await bridgeInstance.createInvitation(displayName);
+            return await bridge.createInvitation(displayName);
         } catch (error) {
             console.error('Failed to create invitation:', error);
             return null;
@@ -88,10 +69,11 @@ export function useChatBridge() {
      * Accept an invitation from a scanned QR code
      */
     const acceptInvitation = useCallback(async (qrData: string): Promise<Contact | null> => {
-        if (!bridgeInstance) return null;
+        const bridge = getBridgeInstance();
+        if (!bridge) return null;
 
         try {
-            return await bridgeInstance.acceptInvitation(qrData);
+            return await bridge.acceptInvitation(qrData);
         } catch (error) {
             console.error('Failed to accept invitation:', error);
             return null;
@@ -102,11 +84,12 @@ export function useChatBridge() {
      * Download a file in decrypted form
      */
     const downloadFileDecrypted = useCallback(async (contactId: string, fileId: string): Promise<Blob | null> => {
-        if (!bridgeInstance) return null;
+        const bridge = getBridgeInstance();
+        if (!bridge) return null;
 
         try {
             const fileRef = { id: fileId, contactId, encryptedSize: 0 };
-            return await bridgeInstance.downloadFileDecrypted(fileRef);
+            return await bridge.downloadFileDecrypted(fileRef);
         } catch (error) {
             console.error('Failed to download file:', error);
             return null;
@@ -117,11 +100,12 @@ export function useChatBridge() {
      * Download a file in encrypted form (for backup)
      */
     const downloadFileEncrypted = useCallback(async (contactId: string, fileId: string): Promise<Blob | null> => {
-        if (!bridgeInstance) return null;
+        const bridge = getBridgeInstance();
+        if (!bridge) return null;
 
         try {
             const fileRef = { id: fileId, contactId, encryptedSize: 0 };
-            return await bridgeInstance.downloadFileEncrypted(fileRef);
+            return await bridge.downloadFileEncrypted(fileRef);
         } catch (error) {
             console.error('Failed to download encrypted file:', error);
             return null;
@@ -146,10 +130,11 @@ export function useChatBridge() {
      * Send read receipt for a specific message
      */
     const sendReadReceipt = useCallback(async (contactId: string, messageId: string): Promise<void> => {
-        if (!bridgeInstance) return;
+        const bridge = getBridgeInstance();
+        if (!bridge) return;
 
         try {
-            await bridgeInstance.sendReadReceipt(contactId, messageId);
+            await bridge.sendReadReceipt(contactId, messageId);
         } catch (error) {
             console.error('Failed to send read receipt:', error);
         }
@@ -159,7 +144,8 @@ export function useChatBridge() {
      * Mark a specific message as read and send receipt
      */
     const markMessageAsRead = useCallback(async (contactId: string, messageId: string): Promise<void> => {
-        if (!bridgeInstance) return;
+        const bridge = getBridgeInstance();
+        if (!bridge) return;
 
         const contactMessages = getMessagesForContactFromStore(contactId);
         const message = contactMessages.find((m) => m.id === messageId);
@@ -170,7 +156,7 @@ export function useChatBridge() {
 
             // Send read receipt to sender
             try {
-                await bridgeInstance.sendReadReceipt(contactId, messageId);
+                await bridge.sendReadReceipt(contactId, messageId);
             } catch (error) {
                 console.error('Failed to send read receipt:', error);
             }
@@ -181,7 +167,8 @@ export function useChatBridge() {
      * Mark all messages from a contact as read
      */
     const markAsRead = useCallback(async (contactId: string): Promise<void> => {
-        if (!bridgeInstance) return;
+        const bridge = getBridgeInstance();
+        if (!bridge) return;
 
         // Get unread incoming messages
         const contactMessages = getMessagesForContactFromStore(contactId);
@@ -195,7 +182,7 @@ export function useChatBridge() {
         // Send read receipts for each unread message
         for (const message of unreadMessages) {
             try {
-                await bridgeInstance.sendReadReceipt(contactId, message.id);
+                await bridge.sendReadReceipt(contactId, message.id);
             } catch (error) {
                 // Don't fail the whole operation if one receipt fails
                 console.error('Failed to send read receipt:', error);

@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
+import okhttp3.CertificatePinner
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -166,14 +167,29 @@ class SimpleXClient(
         private const val QUEUE_ID_SIZE = 24
         private const val KEY_SIZE = 32
 
+        private const val DEFAULT_PROXY_PORT = 8443
+
         private val secureRandom = SecureRandom()
     }
 
+    private val certificatePinner = CertificatePinner.Builder()
+        .add("smp4.simplex.im",
+            "sha256/sFbsmFMBEWvgBjBSsHB9yOGtZ0GkLSN8YiHhNAOk1ys=",
+            "sha256/jQJTbIh0grw0/1TkHSumWb+Fs0Ggogr621gT3PvPKG0=")
+        .add("smp5.simplex.im",
+            "sha256/sFbsmFMBEWvgBjBSsHB9yOGtZ0GkLSN8YiHhNAOk1ys=",
+            "sha256/jQJTbIh0grw0/1TkHSumWb+Fs0Ggogr621gT3PvPKG0=")
+        .add("smp6.simplex.im",
+            "sha256/sFbsmFMBEWvgBjBSsHB9yOGtZ0GkLSN8YiHhNAOk1ys=",
+            "sha256/jQJTbIh0grw0/1TkHSumWb+Fs0Ggogr621gT3PvPKG0=")
+        .build()
+
     private val client = OkHttpClient.Builder()
+        .certificatePinner(certificatePinner)
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
-        .pingInterval(30, TimeUnit.SECONDS)
+        .pingInterval(25 + secureRandom.nextInt(11).toLong(), TimeUnit.SECONDS)
         .build()
 
     // Connection per server
@@ -188,6 +204,17 @@ class SimpleXClient(
 
     // Queue subscriptions
     private val subscribedQueues = ConcurrentHashMap<String, SMPQueueAddress>()
+
+    private var proxyUrl: String? = null
+
+    /**
+     * Configure Shield proxy for transport-layer encryption.
+     * When set, all connections route through the proxy.
+     * Pass null to disable and use direct connections.
+     */
+    fun setProxy(url: String?) {
+        proxyUrl = url
+    }
 
     /**
      * Connect to multiple SMP servers for redundancy.
@@ -209,7 +236,11 @@ class SimpleXClient(
         state.value = ConnectionState.CONNECTING
         updateGlobalState()
 
-        val wsUrl = "wss://$server:5223"
+        val wsUrl = proxyUrl?.let { proxy ->
+            // Route through Shield proxy for transport-layer encryption
+            "$proxy/ws/$server:5223"
+        } ?: "wss://$server:5223"
+        android.util.Log.d("SimpleXClient", "Attempting WebSocket connection to: $wsUrl (proxy=${proxyUrl != null})")
         val request = Request.Builder()
             .url(wsUrl)
             .header("Sec-WebSocket-Protocol", "smp/1")
@@ -229,6 +260,7 @@ class SimpleXClient(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                android.util.Log.e("SimpleXClient", "WebSocket connection failed to $server: ${t.message}", t)
                 state.value = ConnectionState.ERROR
                 serverConnections.remove(server)
                 updateGlobalState()

@@ -55,43 +55,8 @@ function bytesToHex(bytes: Uint8Array): string {
     .join('');
 }
 
-// Placeholder RatchetSession for tests (would use real Shield in production)
-class RatchetSession {
-  private rootKey: Uint8Array;
-  private isInitiator: boolean;
-  private sendCounter = 0;
-  private recvCounter = 0;
-
-  constructor(rootKey: Uint8Array, isInitiator: boolean) {
-    this.rootKey = rootKey;
-    this.isInitiator = isInitiator;
-  }
-
-  async encrypt(plaintext: Uint8Array): Promise<Uint8Array> {
-    // Placeholder - would use actual Shield encryption
-    // Returns: nonce (12) + ciphertext + tag (16)
-    const nonce = crypto.getRandomValues(new Uint8Array(12));
-    const tag = new Uint8Array(16);
-
-    this.sendCounter++;
-
-    // Combine: nonce + plaintext (as ciphertext placeholder) + tag
-    const result = new Uint8Array(nonce.length + plaintext.length + tag.length);
-    result.set(nonce, 0);
-    result.set(plaintext, nonce.length);
-    result.set(tag, nonce.length + plaintext.length);
-
-    return result;
-  }
-
-  async decrypt(ciphertext: Uint8Array): Promise<Uint8Array> {
-    // Placeholder - would use actual Shield decryption
-    // Input: nonce (12) + ciphertext + tag (16)
-    const plaintextLen = ciphertext.length - 12 - 16;
-    this.recvCounter++;
-    return ciphertext.slice(12, 12 + plaintextLen);
-  }
-}
+// Import real Shield implementation
+import { RatchetSession } from '../lib/shield/crypto';
 
 // Message envelope types
 type MessageType = 'TEXT' | 'FILE' | 'FILE_REQUEST' | 'DELIVERY_RECEIPT' | 'READ_RECEIPT' | 'TYPING';
@@ -162,11 +127,12 @@ describe('Shield Encryption Compatibility', () => {
       const rootKey = hexToBytes(testVectors.ratchetSession.rootKey);
       const plaintext = testVectors.ratchetSession.messages[0].plaintext;
 
-      const session = new RatchetSession(rootKey, true);
-      const ciphertext = await session.encrypt(new TextEncoder().encode(plaintext));
+      const session = await RatchetSession.create(rootKey, true);
+      const encrypted = await session.encrypt(new TextEncoder().encode(plaintext));
 
-      // Verify structure: nonce (12) + ciphertext + tag (16)
-      expect(ciphertext.length).toBeGreaterThanOrEqual(28 + plaintext.length);
+      // Wire format from Rust core: nonce(16) + enc(counter(8) + plaintext) + mac(16)
+      // Total: 16 + 8 + plaintext.length + 16 = 40 + plaintext.length
+      expect(encrypted.length).toBe(40 + new TextEncoder().encode(plaintext).length);
     });
 
     it('round-trip encryption works', async () => {
@@ -176,14 +142,15 @@ describe('Shield Encryption Compatibility', () => {
         const plaintext = new TextEncoder().encode(msg.plaintext);
 
         // Initiator encrypts
-        const initiatorSession = new RatchetSession(rootKey, true);
+        const initiatorSession = await RatchetSession.create(rootKey, true);
         const ciphertext = await initiatorSession.encrypt(plaintext);
 
         // Responder decrypts
-        const responderSession = new RatchetSession(rootKey, false);
+        const responderSession = await RatchetSession.create(rootKey, false);
         const decrypted = await responderSession.decrypt(ciphertext);
 
-        expect(new TextDecoder().decode(decrypted)).toBe(msg.plaintext);
+        expect(decrypted).not.toBeNull();
+        expect(new TextDecoder().decode(decrypted!)).toBe(msg.plaintext);
       }
     });
 
@@ -195,29 +162,84 @@ describe('Shield Encryption Compatibility', () => {
 
       if (!unicodeMessage) return;
 
-      const initiatorSession = new RatchetSession(rootKey, true);
+      const initiatorSession = await RatchetSession.create(rootKey, true);
       const ciphertext = await initiatorSession.encrypt(
         new TextEncoder().encode(unicodeMessage.plaintext)
       );
 
-      const responderSession = new RatchetSession(rootKey, false);
-      const decrypted = new TextDecoder().decode(await responderSession.decrypt(ciphertext));
+      const responderSession = await RatchetSession.create(rootKey, false);
+      const decrypted = await responderSession.decrypt(ciphertext);
 
-      expect(decrypted).toBe(unicodeMessage.plaintext);
-      expect(decrypted).toContain('\u4e16\u754c'); // Chinese characters
+      expect(decrypted).not.toBeNull();
+      expect(new TextDecoder().decode(decrypted!)).toBe(unicodeMessage.plaintext);
+      expect(new TextDecoder().decode(decrypted!)).toContain('\u4e16\u754c'); // Chinese characters
     });
 
     it('maintains forward secrecy with different nonces', async () => {
       const rootKey = hexToBytes(testVectors.ratchetSession.rootKey);
 
-      const session1 = new RatchetSession(rootKey, true);
-      const session2 = new RatchetSession(rootKey, true);
+      const session1 = await RatchetSession.create(rootKey, true);
+      const session2 = await RatchetSession.create(rootKey, true);
 
       const msg1 = await session1.encrypt(new TextEncoder().encode('Message 1'));
       const msg2 = await session2.encrypt(new TextEncoder().encode('Message 1'));
 
       // Different sessions should produce different ciphertext (different nonces)
       expect(bytesToHex(msg1)).not.toBe(bytesToHex(msg2));
+    });
+
+    it('wire format matches Rust Shield core: nonce(16) || enc(counter(8) || plaintext) || mac(16)', async () => {
+      const rootKey = hexToBytes(testVectors.ratchetSession.rootKey);
+      const plaintext = new TextEncoder().encode('Test message');
+
+      const session = await RatchetSession.create(rootKey, true);
+      const encrypted = await session.encrypt(plaintext);
+
+      // Parse wire format: nonce(16) || encrypted_data(8 + plaintext.length) || mac(16)
+      const nonce = encrypted.slice(0, 16);
+      const encryptedData = encrypted.slice(16, -16); // counter(8) + plaintext encrypted together
+      const mac = encrypted.slice(-16);
+
+      expect(nonce.length).toBe(16);
+      // Encrypted data contains 8-byte counter + plaintext
+      expect(encryptedData.length).toBe(8 + plaintext.length);
+      expect(mac.length).toBe(16);
+      // Total: 16 + (8 + plaintext.length) + 16 = 40 + plaintext.length
+      expect(encrypted.length).toBe(40 + plaintext.length);
+    });
+
+    it('counter increments with each message', async () => {
+      const rootKey = hexToBytes(testVectors.ratchetSession.rootKey);
+      const session = await RatchetSession.create(rootKey, true);
+
+      // Verify session counter increments after each encryption
+      expect(session.sendCounter).toBe(0);
+
+      await session.encrypt(new TextEncoder().encode('Message 1'));
+      expect(session.sendCounter).toBe(1);
+
+      await session.encrypt(new TextEncoder().encode('Message 2'));
+      expect(session.sendCounter).toBe(2);
+
+      await session.encrypt(new TextEncoder().encode('Message 3'));
+      expect(session.sendCounter).toBe(3);
+    });
+
+    it('multiple messages can be exchanged', async () => {
+      const rootKey = hexToBytes(testVectors.ratchetSession.rootKey);
+      const initiator = await RatchetSession.create(rootKey, true);
+      const responder = await RatchetSession.create(rootKey, false);
+
+      // Send 3 messages from initiator to responder
+      const messages = ['First message', 'Second message', 'Third message'];
+
+      for (const msg of messages) {
+        const plaintext = new TextEncoder().encode(msg);
+        const encrypted = await initiator.encrypt(plaintext);
+        const decrypted = await responder.decrypt(encrypted);
+        expect(decrypted).not.toBeNull();
+        expect(new TextDecoder().decode(decrypted!)).toBe(msg);
+      }
     });
   });
 

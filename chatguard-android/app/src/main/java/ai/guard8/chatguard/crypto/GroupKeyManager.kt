@@ -5,7 +5,8 @@ import ai.guard8.chatguard.model.GroupKey
 import ai.guard8.chatguard.model.GroupMember
 import ai.guard8.chatguard.storage.ContactDao
 import ai.guard8.chatguard.storage.GroupDao
-import ai.guard8.shield.Shield
+import ai.dikestra.shield.Shield
+import ai.dikestra.shield.ShieldUtils
 import java.util.UUID
 
 /**
@@ -34,7 +35,7 @@ class GroupKeyManager(
      * Generate a new random group key.
      */
     fun generateGroupKey(): ByteArray {
-        return Shield.randomBytes(KEY_SIZE)
+        return ShieldUtils.randomBytes(KEY_SIZE)
     }
 
     /**
@@ -116,7 +117,8 @@ class GroupKeyManager(
     suspend fun encryptGroupMessage(groupId: String, plaintext: ByteArray): ByteArray {
         val key = getDecryptedCurrentKey(groupId)
             ?: throw IllegalStateException("No group key found for group: $groupId")
-        return Shield.quickEncrypt(key, plaintext)
+        val padded = MessagePadding.pad(plaintext)
+        return Shield.quickEncrypt(key, padded)
     }
 
     /**
@@ -127,7 +129,8 @@ class GroupKeyManager(
             ?: throw IllegalStateException("Group key not found: $keyId")
 
         val key = decryptKeyFromStorage(groupKey.encryptedKey)
-        return Shield.quickDecrypt(key, ciphertext)
+        val padded = Shield.quickDecrypt(key, ciphertext)
+        return MessagePadding.unpad(padded)
     }
 
     /**
@@ -188,7 +191,7 @@ class GroupKeyManager(
         val stored = keyManager.retrieveKey("group_master_key")
         if (stored != null) return stored
 
-        val newKey = Shield.randomBytes(KEY_SIZE)
+        val newKey = ShieldUtils.randomBytes(KEY_SIZE)
         keyManager.storeKey("group_master_key", newKey)
         return newKey
     }

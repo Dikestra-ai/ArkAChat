@@ -1,6 +1,6 @@
 # Shield SDK
--keep class ai.guard8.shield.** { *; }
--keepclassmembers class ai.guard8.shield.** { *; }
+-keep class ai.dikestra.shield.** { *; }
+-keepclassmembers class ai.dikestra.shield.** { *; }
 
 # Kotlin Serialization
 -keepattributes *Annotation*, InnerClasses

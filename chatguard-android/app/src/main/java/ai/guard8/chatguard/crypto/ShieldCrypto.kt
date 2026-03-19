@@ -1,10 +1,11 @@
 package ai.guard8.chatguard.crypto
 
 import android.content.Context
-import ai.guard8.shield.RatchetSession
-import ai.guard8.shield.Shield
-import ai.guard8.shield.StreamCipher
-import ai.guard8.shield.QRExchange
+import ai.dikestra.shield.RatchetSession
+import ai.dikestra.shield.Shield
+import ai.dikestra.shield.ShieldUtils
+import ai.dikestra.shield.StreamCipher
+import ai.dikestra.shield.QRExchange
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
@@ -39,7 +40,8 @@ class ShieldCrypto(private val context: Context) {
      */
     fun encryptMessage(contactId: String, isInitiator: Boolean, message: String): ByteArray {
         val session = getSession(contactId, isInitiator)
-        return session.encrypt(message.toByteArray(Charsets.UTF_8))
+        val padded = MessagePadding.pad(message.toByteArray(Charsets.UTF_8))
+        return session.encrypt(padded)
     }
 
     /**
@@ -47,7 +49,8 @@ class ShieldCrypto(private val context: Context) {
      */
     fun decryptMessage(contactId: String, isInitiator: Boolean, ciphertext: ByteArray): String {
         val session = getSession(contactId, isInitiator)
-        val plaintext = session.decrypt(ciphertext)
+        val padded = session.decrypt(ciphertext)
+        val plaintext = MessagePadding.unpad(padded)
         return String(plaintext, Charsets.UTF_8)
     }
 
@@ -75,13 +78,24 @@ class ShieldCrypto(private val context: Context) {
         }
     }
 
+    companion object {
+        // Label for media key derivation - must be at least 24 bytes for proper key derivation
+        // (Shield output = nonce(16) + counter(8) + plaintext + mac(16), need 32 bytes after nonce)
+        private val MEDIA_KEY_LABEL = "media_key_derivation_v1_pad_32b".toByteArray(Charsets.UTF_8)
+    }
+
     /**
      * Generate a new shared key for a contact.
      * Creates both chain key (for messages) and media key (for files).
      */
     fun generateSharedKey(contactId: String): ByteArray {
-        val sharedKey = Shield.randomBytes(Shield.KEY_SIZE)
-        val mediaKey = Shield.randomBytes(Shield.KEY_SIZE)
+        val sharedKey = ShieldUtils.randomBytes(ShieldUtils.KEY_SIZE)
+
+        // Derive media key using Shield encryption
+        // Output format: nonce(16) + enc(counter(8) + plaintext) + mac(16)
+        // We extract 32 bytes starting after the nonce for the derived key
+        val encrypted = Shield.quickEncrypt(sharedKey, MEDIA_KEY_LABEL)
+        val mediaKey = encrypted.copyOfRange(16, 48)
 
         keyManager.storeKey("shared_key_$contactId", sharedKey)
         keyManager.storeKey("media_key_$contactId", mediaKey)
@@ -93,10 +107,11 @@ class ShieldCrypto(private val context: Context) {
      * Import a shared key from a contact (received via QR exchange).
      */
     fun importSharedKey(contactId: String, sharedKey: ByteArray) {
-        require(sharedKey.size == Shield.KEY_SIZE) { "Invalid key size" }
+        require(sharedKey.size == ShieldUtils.KEY_SIZE) { "Invalid key size" }
 
-        // Derive media key from shared key
-        val mediaKey = Shield.sha256(sharedKey + "media".toByteArray())
+        // Derive media key using Shield encryption (same derivation as generateSharedKey)
+        val encrypted = Shield.quickEncrypt(sharedKey, MEDIA_KEY_LABEL)
+        val mediaKey = encrypted.copyOfRange(16, 48)
 
         keyManager.storeKey("shared_key_$contactId", sharedKey)
         keyManager.storeKey("media_key_$contactId", mediaKey)
@@ -145,6 +160,7 @@ class ShieldCrypto(private val context: Context) {
 
     /**
      * Quick decrypt using Shield directly.
+     * @throws IllegalStateException if decryption fails
      */
     fun quickDecrypt(key: ByteArray, ciphertext: ByteArray): ByteArray {
         return Shield.quickDecrypt(key, ciphertext)

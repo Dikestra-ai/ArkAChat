@@ -146,6 +146,17 @@ export class WebSimplexClient {
 
   private subscribedQueues = new Map<string, SMPQueueAddress>();
 
+  private proxyUrl: string | null = null;
+
+  /**
+   * Configure Shield proxy for transport-layer encryption.
+   * When set, all connections route through the proxy.
+   * Pass null to disable and use direct connections.
+   */
+  setProxy(url: string | null): void {
+    this.proxyUrl = url;
+  }
+
   /**
    * Connect to multiple SMP servers for redundancy.
    */
@@ -163,10 +174,14 @@ export class WebSimplexClient {
     this.serverStates.set(server, 'connecting');
     this.updateGlobalState();
 
-    const wsUrl = `wss://${server}:5223`;
+    const wsUrl = this.proxyUrl
+      ? `${this.proxyUrl}/ws/${server}:5223`
+      : `wss://${server}:5223`;
 
     return new Promise((resolve, reject) => {
       try {
+        // Note: Browser WebSocket API does not support certificate pinning.
+        // Transport security relies on browser TLS validation and shield-proxy (when configured).
         const ws = new WebSocket(wsUrl, ['smp/1']);
         ws.binaryType = 'arraybuffer';
 
@@ -509,11 +524,12 @@ export class WebSimplexClient {
   }
 
   private scheduleReconnect(server: string): void {
+    const delay = 3000 + Math.floor(Math.random() * 4000); // 3-7 seconds
     setTimeout(() => {
       if (this.serverStates.get(server) !== 'connected') {
         this.connectToServer(server).catch(console.error);
       }
-    }, 5000);
+    }, delay);
   }
 
   private generateCorrelationId(): string {

@@ -57,7 +57,8 @@ enum class MessageType {
     FILE_REQUEST,  // Request encrypted file download
     DELIVERY_RECEIPT,
     READ_RECEIPT,
-    TYPING
+    TYPING,
+    DUMMY
 }
 
 @Serializable
@@ -466,6 +467,7 @@ class ShieldSimplexBridge(
                 MessageType.DELIVERY_RECEIPT -> handleDeliveryReceipt(envelope)
                 MessageType.READ_RECEIPT -> handleReadReceipt(envelope)
                 MessageType.TYPING -> { /* Handle typing indicator */ }
+                MessageType.DUMMY -> { /* Silently discard dummy traffic */ }
             }
 
             // Acknowledge message
