@@ -11,7 +11,7 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url = uri("https://maven.guard8.ai/releases") }
+        maven { url = uri("https://maven.gibraltarcloud.dev/releases") }
     }
 }
 

@@ -33,7 +33,7 @@ describe('SimpleX Service Integration Tests', () => {
     it('setProxy accepts URL string', async () => {
       const { WebSimplexClient } = await import('@/lib/simplex/client');
       const client = new WebSimplexClient();
-      expect(() => client.setProxy('wss://proxy.guard8.ai:8443')).not.toThrow();
+      expect(() => client.setProxy('wss://proxy.gibraltarcloud.dev:8443')).not.toThrow();
     });
   });
 

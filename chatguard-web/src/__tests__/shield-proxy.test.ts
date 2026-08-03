@@ -93,7 +93,7 @@ describe('Shield Proxy Integration Tests', () => {
       // Verify setProxy doesn't throw
       const { WebSimplexClient } = await import('@/lib/simplex/client');
       const client = new WebSimplexClient();
-      client.setProxy('wss://proxy.guard8.ai:8443');
+      client.setProxy('wss://proxy.gibraltarcloud.dev:8443');
       // Can disable proxy
       client.setProxy(null);
     });
