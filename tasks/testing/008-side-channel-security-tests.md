@@ -26,8 +26,8 @@ area: testing
 
 ## Pre-flight Checks
 - [ ] Read completed backend-015, backend-016, backend-017 task files for implementation details
-- [ ] Read existing test files in `chatguard-web/src/__tests__/` for test patterns
-- [ ] Read `chatguard-web/vitest.config.ts` for test configuration
+- [ ] Read existing test files in `arkachat-web/src/__tests__/` for test patterns
+- [ ] Read `arkachat-web/vitest.config.ts` for test configuration
 - [ ] Check `tests/vectors/` for existing cross-platform test vectors
 
 ## Context

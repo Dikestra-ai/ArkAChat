@@ -21,7 +21,7 @@ area: backend
 ## Causation Chain
 > `MessageSyncService` is declared in `AndroidManifest.xml` (line 44-47) and fully
 > implemented in `MessageSyncService.kt`, BUT no code ever calls `startForegroundService()`
-> to start it. `ChatGuardApp.onCreate()` calls `bridge.initialize()` which connects
+> to start it. `ArkAChatApp.onCreate()` calls `bridge.initialize()` which connects
 > SimpleX for sending, but `MessageSyncService.onStartCommand()` is never invoked,
 > so background message reception is dead code.
 >
@@ -31,9 +31,9 @@ area: backend
 > → `handleIncomingMessage()` → decrypt + save + notify
 
 ## Pre-flight Checks
-- [ ] Read `chatguard-android/.../MainActivity.kt` — no service start call (confirmed)
-- [ ] Read `chatguard-android/.../MessageSyncService.kt` — fully implemented but never started
-- [ ] Read `chatguard-android/.../ChatGuardApp.kt` — `bridge.initialize()` only, no service
+- [ ] Read `arkachat-android/.../MainActivity.kt` — no service start call (confirmed)
+- [ ] Read `arkachat-android/.../MessageSyncService.kt` — fully implemented but never started
+- [ ] Read `arkachat-android/.../ArkAChatApp.kt` — `bridge.initialize()` only, no service
 - [ ] Read `AndroidManifest.xml` — service declared with `foregroundServiceType="dataSync"`
 - [ ] Verify FOREGROUND_SERVICE permission is declared (line 15-16 of manifest — confirmed)
 - [ ] Check `POST_NOTIFICATIONS` permission is declared (line 12 — confirmed)
@@ -44,14 +44,14 @@ listens for incoming encrypted messages. It handles decryption via Shield, saves
 database, and shows notifications. The service is fully implemented and declared in the
 manifest, but `MainActivity` never starts it. This means users cannot receive messages
 when the app is in the background or even in the foreground (since `bridge.initialize()`
-in `ChatGuardApp` may not subscribe to all queues the service would).
+in `ArkAChatApp` may not subscribe to all queues the service would).
 
 ## Tasks
 - [ ] Add `startForegroundService()` call in `MainActivity.onCreate()` to start `MessageSyncService`
 - [ ] Add runtime permission check for `POST_NOTIFICATIONS` (Android 13+) before starting service
 - [ ] Prevent duplicate service starts (check if already running)
-- [ ] Ensure `MessageSyncService` doesn't conflict with `bridge.initialize()` in `ChatGuardApp`
-  - Either: Remove `bridge.initialize()` from `ChatGuardApp` and let service handle connection
+- [ ] Ensure `MessageSyncService` doesn't conflict with `bridge.initialize()` in `ArkAChatApp`
+  - Either: Remove `bridge.initialize()` from `ArkAChatApp` and let service handle connection
   - Or: Coordinate so service and bridge share the same `SimpleXClient` instance
 - [ ] Handle service lifecycle: restart on device boot if user was logged in
 - [ ] Verify no duplicate SimpleX connections (service + bridge both calling `connect()`)
@@ -67,8 +67,8 @@ in `ChatGuardApp` may not subscribe to all queues the service would).
 - [ ] Runtime notification permission handled for Android 13+
 
 ## Notes
-- `ChatGuardApp.simplexClient` is a shared instance — `MessageSyncService.onStartCommand()`
-  accesses it via `(application as ChatGuardApp).simplexClient`
+- `ArkAChatApp.simplexClient` is a shared instance — `MessageSyncService.onStartCommand()`
+  accesses it via `(application as ArkAChatApp).simplexClient`
 - Potential conflict: both `bridge.initialize()` and `MessageSyncService.onStartCommand()`
   call `simplexClient.connect()` — `SimpleXClient.connect()` guards against double-connect
   per server, so this should be safe, but verify

@@ -54,14 +54,14 @@ object TestVectors {
 # Run from project root
 
 # Start Android emulator
-adb shell am start -n ai.guard8.chatguard/.MainActivity
+adb shell am start -n ai.dikestra.arkachat/.MainActivity
 
 # Start Web app
-cd chatguard-web && npm run dev &
+cd arkachat-web && npm run dev &
 
 # Run test suite
-./gradlew :chatguard-android:connectedAndroidTest
-cd chatguard-web && npm run test:e2e
+./gradlew :arkachat-android:connectedAndroidTest
+cd arkachat-web && npm run test:e2e
 
 # Verify message delivery
 curl -X POST http://localhost:3000/api/test/send \

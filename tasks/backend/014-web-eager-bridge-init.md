@@ -33,11 +33,11 @@ area: backend
 > → SimpleX connected immediately → messages receivable on any page
 
 ## Pre-flight Checks
-- [ ] Read `chatguard-web/src/hooks/useChatBridge.ts` — lazy init confirmed (line 27-30)
-- [ ] Read `chatguard-web/src/lib/storage/chatStore.ts` — `initialize()` is a no-op
-- [ ] Read `chatguard-web/src/app/layout.tsx` — server component, no bridge init
-- [ ] Read `chatguard-web/src/lib/bridge/shieldSimplexBridge.ts` — `initialize()` method
-- [ ] Read `chatguard-web/src/app/chat/page.tsx` — uses `useChatBridge()` (only page that does)
+- [ ] Read `arkachat-web/src/hooks/useChatBridge.ts` — lazy init confirmed (line 27-30)
+- [ ] Read `arkachat-web/src/lib/storage/chatStore.ts` — `initialize()` is a no-op
+- [ ] Read `arkachat-web/src/app/layout.tsx` — server component, no bridge init
+- [ ] Read `arkachat-web/src/lib/bridge/shieldSimplexBridge.ts` — `initialize()` method
+- [ ] Read `arkachat-web/src/app/chat/page.tsx` — uses `useChatBridge()` (only page that does)
 
 ## Context
 The web app's SimpleX connection is only established when a user navigates to a chat view
@@ -45,11 +45,11 @@ that renders a component using `useChatBridge()`. Messages sent to the user whil
 on other pages are missed. The bridge needs to initialize eagerly at app startup.
 
 ## Tasks
-- [ ] Create `chatguard-web/src/components/BridgeProvider.tsx` — client component with `'use client'`
+- [ ] Create `arkachat-web/src/components/BridgeProvider.tsx` — client component with `'use client'`
   - Calls `bridge.initialize()` on mount via `useEffect`
   - Subscribes to connection state changes
   - Provides bridge status context to children
-- [ ] Update `chatguard-web/src/app/layout.tsx` to wrap children in `<BridgeProvider>`
+- [ ] Update `arkachat-web/src/app/layout.tsx` to wrap children in `<BridgeProvider>`
 - [ ] Remove lazy initialization from `useChatBridge.ts` — bridge is already initialized
   - Keep the hook for accessing bridge methods, but don't init in `useEffect`
 - [ ] Fix `chatStore.initialize()` to either remove the misleading method or connect it to bridge

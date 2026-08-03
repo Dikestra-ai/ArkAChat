@@ -6,22 +6,25 @@
 .domguard/inspirations/
 
 # Android
-chatguard-android/.gradle/
-chatguard-android/build/
-chatguard-android/app/build/
-chatguard-android/local.properties
-chatguard-android/*.iml
-chatguard-android/.idea/
+arkachat-android/.gradle/
+arkachat-android/build/
+arkachat-android/app/build/
+arkachat-android/local.properties
+arkachat-android/*.iml
+arkachat-android/.idea/
 
 # Web
-chatguard-web/node_modules/
-chatguard-web/.next/
-chatguard-web/out/
+arkachat-web/node_modules/
+arkachat-web/.next/
+arkachat-web/out/
 
 # Desktop
-chatguard-desktop/node_modules/
-chatguard-desktop/dist/
-chatguard-desktop/renderer/
+arkachat-desktop/node_modules/
+arkachat-desktop/dist/
+arkachat-desktop/renderer/
+
+# Proxy
+arkachat-proxy/.env
 
 # General
 *.log

@@ -23,7 +23,7 @@ area: testing
 
 ## Pre-flight Checks
 - [ ] Read completed backend-012 task file
-- [ ] Read Shield proxy test patterns in `/data/git/Guard8.ai/Shield/shield-proxy/`
+- [ ] Read Shield proxy test patterns in `/data/git/Dikestra AI/Shield/shield-proxy/`
 - [ ] Check Docker availability for proxy container tests
 
 ## Context

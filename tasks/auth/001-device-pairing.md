@@ -15,7 +15,7 @@ area: auth
 # Device Pairing & Cross-Platform Sync
 
 ## Context
-Implement secure device pairing via QR codes and cross-platform message sync as defined in ChatGuard.md.
+Implement secure device pairing via QR codes and cross-platform message sync as defined in ArkAChat.md.
 
 ## Objectives
 - QR-based device pairing protocol
@@ -38,7 +38,7 @@ Implement secure device pairing via QR codes and cross-platform message sync as 
 ```
 1. Device A generates pairing QR:
    {
-     version: "chatguard-sync-1.0",
+     version: "arkachat-sync-1.0",
      pairingKey: base64(randomKey),
      deviceId: uuid(),
      timestamp: epochMs,

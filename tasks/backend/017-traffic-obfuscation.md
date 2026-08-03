@@ -31,9 +31,9 @@ area: backend
 > Web: `client.ts` line 512 — `setTimeout(..., 5000)` — fixed reconnect delay
 
 ## Pre-flight Checks
-- [ ] Read `chatguard-android/.../SimpleXClient.kt` line 176 — fixed ping interval
-- [ ] Read `chatguard-web/src/lib/simplex/client.ts` — fixed reconnect timing
-- [ ] Read `chatguard-web/src/lib/bridge/shieldSimplexBridge.ts` — typing indicator handling
+- [ ] Read `arkachat-android/.../SimpleXClient.kt` line 176 — fixed ping interval
+- [ ] Read `arkachat-web/src/lib/simplex/client.ts` — fixed reconnect timing
+- [ ] Read `arkachat-web/src/lib/bridge/shieldSimplexBridge.ts` — typing indicator handling
 - [ ] Understand SMP server behavior with dummy messages (will server forward them?)
 
 ## Context

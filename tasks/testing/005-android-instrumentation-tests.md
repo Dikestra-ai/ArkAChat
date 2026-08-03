@@ -39,7 +39,7 @@ Tests run on real devices/emulators connected via Android SDK on localhost.
 
 ### Test Setup
 ```kotlin
-// androidTest/java/ai/guard8/chatguard/TestSetup.kt
+// androidTest/java/ai/dikestra/arkachat/TestSetup.kt
 @HiltAndroidTest
 @RunWith(AndroidJUnit4::class)
 abstract class BaseInstrumentationTest {
@@ -69,7 +69,7 @@ abstract class BaseInstrumentationTest {
 
 ### Contact List UI Tests
 ```kotlin
-// androidTest/java/ai/guard8/chatguard/ui/ContactListTest.kt
+// androidTest/java/ai/dikestra/arkachat/ui/ContactListTest.kt
 @HiltAndroidTest
 class ContactListTest : BaseInstrumentationTest() {
 
@@ -131,7 +131,7 @@ class ContactListTest : BaseInstrumentationTest() {
 
 ### Chat Screen UI Tests
 ```kotlin
-// androidTest/java/ai/guard8/chatguard/ui/ChatScreenTest.kt
+// androidTest/java/ai/dikestra/arkachat/ui/ChatScreenTest.kt
 @HiltAndroidTest
 class ChatScreenTest : BaseInstrumentationTest() {
 
@@ -244,7 +244,7 @@ class ChatScreenTest : BaseInstrumentationTest() {
 
 ### Shield Encryption Integration Tests
 ```kotlin
-// androidTest/java/ai/guard8/chatguard/crypto/ShieldIntegrationTest.kt
+// androidTest/java/ai/dikestra/arkachat/crypto/ShieldIntegrationTest.kt
 @HiltAndroidTest
 class ShieldIntegrationTest : BaseInstrumentationTest() {
 
@@ -311,7 +311,7 @@ class ShieldIntegrationTest : BaseInstrumentationTest() {
 
 ### SimpleX Connection Tests
 ```kotlin
-// androidTest/java/ai/guard8/chatguard/network/SimpleXConnectionTest.kt
+// androidTest/java/ai/dikestra/arkachat/network/SimpleXConnectionTest.kt
 @HiltAndroidTest
 class SimpleXConnectionTest : BaseInstrumentationTest() {
 
@@ -363,7 +363,7 @@ class SimpleXConnectionTest : BaseInstrumentationTest() {
 
 ### Database Migration Tests
 ```kotlin
-// androidTest/java/ai/guard8/chatguard/storage/MigrationTest.kt
+// androidTest/java/ai/dikestra/arkachat/storage/MigrationTest.kt
 @RunWith(AndroidJUnit4::class)
 class MigrationTest {
 
@@ -430,7 +430,7 @@ jobs:
           arch: x86_64
           profile: Nexus 6
           script: |
-            cd chatguard-android
+            cd arkachat-android
             ./gradlew connectedDebugAndroidTest
 ```
 
@@ -444,7 +444,7 @@ adb devices
 
 # Run specific test class
 ./gradlew :app:connectedDebugAndroidTest \
-    -Pandroid.testInstrumentationRunnerArguments.class=ai.guard8.chatguard.ui.ChatScreenTest
+    -Pandroid.testInstrumentationRunnerArguments.class=ai.dikestra.arkachat.ui.ChatScreenTest
 
 # Run with coverage
 ./gradlew :app:createDebugCoverageReport

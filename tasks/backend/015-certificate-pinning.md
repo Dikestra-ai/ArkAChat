@@ -32,9 +32,9 @@ area: backend
 > Web: `client.ts` line 170 — `new WebSocket(wsUrl)` with no additional TLS validation.
 
 ## Pre-flight Checks
-- [ ] Read `chatguard-android/.../SimpleXClient.kt` lines 172-177 — no cert pinning
-- [ ] Read `chatguard-android/.../res/xml/network_security_config.xml` — system CAs only
-- [ ] Read `chatguard-web/src/lib/simplex/client.ts` line 166-170 — no TLS hardening
+- [ ] Read `arkachat-android/.../SimpleXClient.kt` lines 172-177 — no cert pinning
+- [ ] Read `arkachat-android/.../res/xml/network_security_config.xml` — system CAs only
+- [ ] Read `arkachat-web/src/lib/simplex/client.ts` line 166-170 — no TLS hardening
 - [ ] Obtain TLS certificate fingerprints for smp4/5/6.simplex.im
 - [ ] Check if SimpleX servers rotate certs (determine pin rotation strategy)
 

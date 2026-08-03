@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ChatGuard is a quantum-resistant messaging application combining:
+ArkAChat is a quantum-resistant messaging application combining:
 - **SimpleX Chat Protocol**: Zero-identifier messaging (no phone numbers, pairwise connections only)
-- **Guard8.ai Shield v1.1.0**: EXPTIME-secure encryption with forward secrecy
+- **Dikestra AI Shield v1.1.0**: EXPTIME-secure encryption with forward secrecy
 
 Target platforms: Android (Kotlin/Jetpack Compose), Web (React/Next.js), Desktop (Electron)
 
@@ -14,7 +14,7 @@ Target platforms: Android (Kotlin/Jetpack Compose), Web (React/Next.js), Desktop
 
 ### Android
 ```bash
-cd chatguard-android
+cd arkachat-android
 ./gradlew assembleDebug          # Debug build
 ./gradlew assembleRelease        # Release build
 ./gradlew test                   # Run unit tests
@@ -23,7 +23,7 @@ cd chatguard-android
 
 ### Web
 ```bash
-cd chatguard-web
+cd arkachat-web
 npm install                      # Install dependencies
 npm run dev                      # Development server (localhost:3000)
 npm run build                    # Production build
@@ -32,7 +32,7 @@ npm run lint                     # Lint code
 
 ### Desktop
 ```bash
-cd chatguard-desktop
+cd arkachat-desktop
 npm install                      # Install dependencies
 npm run dev                      # Development mode
 npm run build:linux              # Build for Linux
@@ -44,8 +44,8 @@ npm run build:windows            # Build for Windows
 
 ### Directory Structure
 ```
-chatguard-android/              # Android app (Kotlin, Jetpack Compose)
-├── app/src/main/java/ai/guard8/chatguard/
+arkachat-android/              # Android app (Kotlin, Jetpack Compose)
+├── app/src/main/java/ai/dikestra/arkachat/
 │   ├── crypto/                 # ShieldCrypto, KeyManager, BiometricAuth
 │   ├── network/                # SimpleXClient, MessageSyncService
 │   ├── storage/                # ChatDatabase (Room), EncryptedPrefs
@@ -53,7 +53,7 @@ chatguard-android/              # Android app (Kotlin, Jetpack Compose)
 │   ├── viewmodel/              # ChatViewModel, ContactsViewModel
 │   └── ui/                     # Compose screens (Chat, Contacts, Settings)
 
-chatguard-web/                  # Web app (Next.js 14, React)
+arkachat-web/                  # Web app (Next.js 14, React)
 ├── src/
 │   ├── app/                    # Next.js App Router pages
 │   ├── components/             # React components
@@ -62,7 +62,7 @@ chatguard-web/                  # Web app (Next.js 14, React)
 │       ├── simplex/            # WebSimplexClient (WebSocket)
 │       └── storage/            # Zustand store with persistence
 
-chatguard-desktop/              # Desktop app (Electron)
+arkachat-desktop/              # Desktop app (Electron)
 ├── main/                       # Electron main process
 │   ├── index.js                # App entry, window management
 │   ├── keystore.js             # OS keychain (keytar)
@@ -84,9 +84,9 @@ chatguard-desktop/              # Desktop app (Electron)
 
 ## Related Projects
 
-- **Shield**: `/data/git/Guard8.ai/Shield` - Core encryption library
-- **DOMGuard**: `/data/git/Guard8.ai/DOMGuard` - Browser security tools
-- **TaskGuard**: `/data/git/Guard8.ai/TaskGuard` - Task management
+- **Shield**: `/data/git/Dikestra-ai/Shield` - Core encryption library
+- **DOMGuard**: `/data/git/Dikestra-ai/DOMGuard` - Browser security tools
+- **TaskGuard**: `/data/git/Dikestra-ai/TaskGuard` - Task management
 
 ## Shield Dependencies
 

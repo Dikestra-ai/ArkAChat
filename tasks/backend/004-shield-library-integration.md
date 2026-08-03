@@ -15,7 +15,7 @@ area: backend
 # Integrate Real Shield Library
 
 ## Context
-Replace placeholder Shield implementation with the actual Guard8.ai Shield library from `/data/git/Guard8.ai/Shield/`.
+Replace placeholder Shield implementation with the actual Dikestra AI Shield library from `/data/git/Dikestra AI/Shield/`.
 
 ## Objectives
 - Link Shield Kotlin library for Android

@@ -31,9 +31,9 @@ area: backend
 > are indistinguishable.
 
 ## Pre-flight Checks
-- [ ] Read `chatguard-android/.../ShieldCrypto.kt` line 41-44 — encrypt without padding
-- [ ] Read `chatguard-web/src/lib/shield/crypto.ts` lines 136-141 — encrypt without padding
-- [ ] Read `chatguard-web/src/lib/bridge/shieldSimplexBridge.ts` — envelope structure
+- [ ] Read `arkachat-android/.../ShieldCrypto.kt` line 41-44 — encrypt without padding
+- [ ] Read `arkachat-web/src/lib/shield/crypto.ts` lines 136-141 — encrypt without padding
+- [ ] Read `arkachat-web/src/lib/bridge/shieldSimplexBridge.ts` — envelope structure
 - [ ] Verify Shield decrypt handles padded plaintext (padding must be strippable)
 - [ ] Check maximum SMP message size (if any server-side limit)
 

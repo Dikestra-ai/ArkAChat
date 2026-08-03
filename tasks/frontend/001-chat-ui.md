@@ -15,7 +15,7 @@ area: frontend
 # Chat Screen UI (Jetpack Compose)
 
 ## Context
-Implement the main chat interface using Jetpack Compose with Material 3 design, matching the architecture in ChatGuard.md.
+Implement the main chat interface using Jetpack Compose with Material 3 design, matching the architecture in ArkAChat.md.
 
 ## Objectives
 - Create ChatScreen composable with message list

@@ -39,7 +39,7 @@ Test that Android and Web apps can communicate with each other through the Shiel
 ┌─────────────────┐         ┌─────────────────┐
 │ Android Emulator│   SMP   │   Web Browser   │
 │                 │ ◄─────► │   (Playwright)  │
-│ Running ChatGuard│        │ Running ChatGuard│
+│ Running ArkAChat│        │ Running ArkAChat│
 └─────────────────┘         └─────────────────┘
         │                           │
         └───────── Shared ──────────┘
@@ -165,10 +165,10 @@ describe('Cross-Platform Communication', () => {
 emulator -avd Pixel_6_API_33 &
 
 # Install Android app
-cd chatguard-android && ./gradlew installDebug
+cd arkachat-android && ./gradlew installDebug
 
 # Start Web app
-cd chatguard-web && npm run dev &
+cd arkachat-web && npm run dev &
 
 # Run cross-platform tests
 npm run test:cross-platform
@@ -191,12 +191,12 @@ jobs:
         with:
           api-level: 33
           script: |
-            cd chatguard-android
+            cd arkachat-android
             ./gradlew installDebug
 
       - name: Start Web App
         run: |
-          cd chatguard-web
+          cd arkachat-web
           npm ci
           npm run build
           npm start &

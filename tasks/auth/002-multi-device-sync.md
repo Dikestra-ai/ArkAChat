@@ -15,7 +15,7 @@ area: auth
 # Multi-Device Sync and Pairing
 
 ## Context
-Allow users to use ChatGuard on multiple devices (Android + Web) with synchronized contacts and message history.
+Allow users to use ArkAChat on multiple devices (Android + Web) with synchronized contacts and message history.
 
 ## Objectives
 - QR-based device pairing for same account
@@ -66,7 +66,7 @@ Allow users to use ChatGuard on multiple devices (Android + Web) with synchroniz
 
 ### Key Derivation for Backup
 ```
-backup_key = HKDF(master_key, "chatguard-backup-v1")
+backup_key = HKDF(master_key, "arkachat-backup-v1")
 ```
 
 ## Security Considerations

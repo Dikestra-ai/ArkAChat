@@ -24,7 +24,7 @@ Create Electron wrapper for the web app to provide native desktop experience on 
 - Enable native notifications
 
 ## Tasks
-- [ ] Create `chatguard-desktop/` project
+- [ ] Create `arkachat-desktop/` project
 - [ ] Configure Electron main process
 - [ ] Set up Next.js static export for renderer
 - [ ] Integrate `keytar` for OS keychain
@@ -37,7 +37,7 @@ Create Electron wrapper for the web app to provide native desktop experience on 
 
 ### Project Structure
 ```
-chatguard-desktop/
+arkachat-desktop/
 ├── main/
 │   ├── index.ts           # Electron main process
 │   ├── keystore.ts        # OS keychain integration
@@ -79,19 +79,19 @@ app.whenReady().then(async () => {
 import * as keytar from 'keytar';
 
 export async function storeKey(keyId: string, key: string): Promise<void> {
-  await keytar.setPassword('ChatGuard', keyId, key);
+  await keytar.setPassword('ArkAChat', keyId, key);
 }
 
 export async function retrieveKey(keyId: string): Promise<string | null> {
-  return keytar.getPassword('ChatGuard', keyId);
+  return keytar.getPassword('ArkAChat', keyId);
 }
 ```
 
 ### Build Configuration
 ```yaml
 # electron-builder.yml
-appId: ai.guard8.chatguard
-productName: ChatGuard
+appId: ai.dikestra.arkachat
+productName: ArkAChat
 directories:
   output: dist
 mac:

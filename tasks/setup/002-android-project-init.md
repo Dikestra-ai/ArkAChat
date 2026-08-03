@@ -15,7 +15,7 @@ area: setup
 # Initialize Android Project Structure
 
 ## Context
-Set up the Android project with Kotlin, Jetpack Compose, and Shield SDK integration as per ChatGuard.md architecture.
+Set up the Android project with Kotlin, Jetpack Compose, and Shield SDK integration as per ArkAChat.md architecture.
 
 ## Objectives
 - Create Android project with proper package structure
@@ -23,10 +23,10 @@ Set up the Android project with Kotlin, Jetpack Compose, and Shield SDK integrat
 - Set up Shield Android SDK v1.1.0 integration
 
 ## Tasks
-- [ ] Create `chatguard-android/` directory structure
+- [ ] Create `arkachat-android/` directory structure
 - [ ] Configure root `build.gradle.kts` with Kotlin and Compose plugins
 - [ ] Configure app `build.gradle.kts` with Shield SDK and dependencies
-- [ ] Create package structure: `ai.guard8.chatguard.*`
+- [ ] Create package structure: `ai.dikestra.arkachat.*`
 - [ ] Set up AndroidManifest.xml with required permissions
 - [ ] Create MainActivity.kt entry point
 
@@ -34,7 +34,7 @@ Set up the Android project with Kotlin, Jetpack Compose, and Shield SDK integrat
 
 ### Package Structure
 ```
-ai.guard8.chatguard/
+ai.dikestra.arkachat/
 ├── ui/           # Jetpack Compose screens
 ├── viewmodel/    # ViewModels
 ├── model/        # Data classes

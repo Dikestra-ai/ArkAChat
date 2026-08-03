@@ -273,16 +273,16 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        run: cd chatguard-web && npm ci
+        run: cd arkachat-web && npm ci
 
       - name: Build
-        run: cd chatguard-web && npm run build
+        run: cd arkachat-web && npm run build
 
       - name: Start server
-        run: cd chatguard-web && npm start &
+        run: cd arkachat-web && npm start &
 
       - name: Run E2E tests
-        run: cd chatguard-web && npm run test:e2e
+        run: cd arkachat-web && npm run test:e2e
         env:
           CI: true
 ```

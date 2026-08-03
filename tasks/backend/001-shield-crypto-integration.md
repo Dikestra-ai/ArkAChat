@@ -51,7 +51,7 @@ class ShieldCrypto(context: Context) {
 }
 ```
 
-### Security Parameters (from ChatGuard.md)
+### Security Parameters (from ArkAChat.md)
 - Key derivation: PBKDF2-SHA256, 100,000 iterations
 - Key size: 256 bits
 - Nonce: 128 bits random per message

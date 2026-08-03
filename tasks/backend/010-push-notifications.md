@@ -15,7 +15,7 @@ area: backend
 # Push Notifications (FCM/APNs)
 
 ## Context
-Currently ChatGuard only has local notifications that work while the app is running.
+Currently ArkAChat only has local notifications that work while the app is running.
 Need to implement remote push notifications via FCM (Android) and APNs (iOS/Web)
 to notify users of new messages when the app is in background or closed.
 
@@ -29,7 +29,7 @@ to notify users of new messages when the app is in background or closed.
 
 ### Android (FCM)
 - [ ] Add Firebase SDK dependencies
-- [ ] Create `ChatGuardFirebaseService.kt`
+- [ ] Create `ArkAChatFirebaseService.kt`
 - [ ] Register FCM token on app start
 - [ ] Send token to SimpleX server on contact pairing
 - [ ] Handle incoming push messages
@@ -54,13 +54,13 @@ to notify users of new messages when the app is in background or closed.
 ### Android FCM Service
 
 ```kotlin
-// ChatGuardFirebaseService.kt
-class ChatGuardFirebaseService : FirebaseMessagingService() {
+// ArkAChatFirebaseService.kt
+class ArkAChatFirebaseService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
         // Register token with SimpleX server
         CoroutineScope(Dispatchers.IO).launch {
-            ChatGuardApp.instance.registerPushToken(token)
+            ArkAChatApp.instance.registerPushToken(token)
         }
     }
 
@@ -124,7 +124,7 @@ self.addEventListener('push', (event) => {
     };
 
     event.waitUntil(
-        self.registration.showNotification(data.title || 'ChatGuard', options)
+        self.registration.showNotification(data.title || 'ArkAChat', options)
     );
 });
 
@@ -173,7 +173,7 @@ self.addEventListener('notificationclick', (event) => {
 ## Files to Create
 
 ### Android
-- `ChatGuardFirebaseService.kt`
+- `ArkAChatFirebaseService.kt`
 - `PushTokenManager.kt`
 - `NotificationHelper.kt`
 

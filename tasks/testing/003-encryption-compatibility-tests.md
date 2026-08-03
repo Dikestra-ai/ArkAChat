@@ -118,10 +118,10 @@ test('Android ciphertext decrypts on Web', async () => {
 ### Run Tests
 ```bash
 # Android
-./gradlew :chatguard-android:app:testDebugUnitTest --tests "*ShieldCompatibility*"
+./gradlew :arkachat-android:app:testDebugUnitTest --tests "*ShieldCompatibility*"
 
 # Web
-cd chatguard-web && npm test -- --grep "shield-compatibility"
+cd arkachat-web && npm test -- --grep "shield-compatibility"
 ```
 
 ## Acceptance Criteria

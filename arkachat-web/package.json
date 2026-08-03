@@ -1,0 +1,42 @@
+{
+  "name": "arkachat-web",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@guard8/shield": "file:../../Shield/javascript",
+    "@tanstack/react-virtual": "^3.0.0",
+    "@types/qrcode": "^1.5.6",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.0",
+    "html5-qrcode": "^2.3.8",
+    "idb": "^7.1.0",
+    "lucide-react": "^0.300.0",
+    "next": "^14.0.0",
+    "qrcode": "^1.5.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tailwind-merge": "^2.2.0",
+    "zustand": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.30",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "autoprefixer": "^10.4.0",
+    "eslint": "^8.56.0",
+    "eslint-config-next": "^14.0.0",
+    "jsdom": "^27.4.0",
+    "postcss": "^8.4.0",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.3.0",
+    "vitest": "^4.0.17"
+  }
+}

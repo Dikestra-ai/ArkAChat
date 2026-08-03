@@ -24,8 +24,8 @@ area: testing
 
 ## Pre-flight Checks
 - [ ] Read completed backend-013 and backend-014 task files
-- [ ] Read existing test patterns in `chatguard-web/src/__tests__/e2e/`
-- [ ] Read `chatguard-web/src/__tests__/shield-compatibility.test.ts` for test structure
+- [ ] Read existing test patterns in `arkachat-web/src/__tests__/e2e/`
+- [ ] Read `arkachat-web/src/__tests__/shield-compatibility.test.ts` for test structure
 
 ## Context
 The SimpleX connection must be established eagerly and maintained reliably across both

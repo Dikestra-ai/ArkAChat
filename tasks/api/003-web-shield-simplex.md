@@ -122,7 +122,7 @@ export class ContactPairing {
 // src/lib/storage/sessionStore.ts
 import { openDB } from 'idb';
 
-const db = await openDB('chatguard-sessions', 1, {
+const db = await openDB('arkachat-sessions', 1, {
   upgrade(db) {
     db.createObjectStore('sessions', { keyPath: 'contactId' });
   }

@@ -15,7 +15,7 @@ area: backend
 # Group Chat Support
 
 ## Context
-Extend ChatGuard to support group conversations with end-to-end encryption.
+Extend ArkAChat to support group conversations with end-to-end encryption.
 Groups use a combination of Shield encryption and SimpleX messaging, with
 a shared group key distributed to all members via pairwise channels.
 

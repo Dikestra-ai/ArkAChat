@@ -24,7 +24,7 @@ Set up the web application using Next.js 14 with App Router, React, and Shield W
 - Configure IndexedDB for local storage
 
 ## Tasks
-- [ ] Initialize Next.js project in `chatguard-web/`
+- [ ] Initialize Next.js project in `arkachat-web/`
 - [ ] Install and configure Tailwind CSS
 - [ ] Set up shadcn/ui component library
 - [ ] Install @guard8/shield-browser WASM package
@@ -36,7 +36,7 @@ Set up the web application using Next.js 14 with App Router, React, and Shield W
 
 ### Directory Structure
 ```
-chatguard-web/
+arkachat-web/
 ├── src/
 │   ├── app/
 │   │   ├── page.tsx           # Landing
