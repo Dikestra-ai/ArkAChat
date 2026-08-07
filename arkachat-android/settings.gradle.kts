@@ -17,9 +17,10 @@ dependencyResolutionManagement {
 
 rootProject.name = "ArkAChat"
 include(":app")
+include(":shield-stub")
 
 // Include Shield Android library as composite build (local dev only).
-// In CI the sibling repo is absent — fall back to the Maven artifact.
+// In CI the sibling repo is absent — app falls back to :shield-stub.
 if (File("../../Shield/android").exists()) {
     includeBuild("../../Shield/android") {
         dependencySubstitution {

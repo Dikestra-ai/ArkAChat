@@ -59,8 +59,12 @@ android {
 }
 
 dependencies {
-    // Shield library (composite build from ../../Shield/android)
-    implementation("ai.dikestra:shield-android")
+    // Shield library: real lib via composite build when sibling repo exists, else CI stub
+    if (File(rootProject.projectDir, "../../Shield/android").exists()) {
+        implementation("ai.dikestra:shield-android")
+    } else {
+        implementation(project(":shield-stub"))
+    }
 
     // Core Android
     implementation("androidx.core:core-ktx:1.12.0")
