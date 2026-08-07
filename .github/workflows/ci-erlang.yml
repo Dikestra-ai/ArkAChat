@@ -1,0 +1,69 @@
+name: Erlang CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'arkachat-nitrogen/**'
+      - '.github/workflows/ci-erlang.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'arkachat-nitrogen/**'
+      - '.github/workflows/ci-erlang.yml'
+
+jobs:
+  test:
+    name: Compile & EUnit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Erlang/OTP
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: '27'
+          rebar3-version: '3.27.0'
+
+      - name: Make scripts executable
+        run: chmod +x do-plugins.escript copy_static.escript etc/assemble_config.escript
+        working-directory: arkachat-nitrogen/app
+
+      - name: Fetch dependencies
+        run: rebar3 get-deps
+        working-directory: arkachat-nitrogen/app
+
+      - name: Compile (test profile — skips release hooks)
+        run: rebar3 as test compile
+        working-directory: arkachat-nitrogen/app
+
+      - name: Compile test modules
+        run: |
+          APP_EBIN="_build/test/lib/arkachat/ebin"
+          NITROGEN_EBIN="_build/default/lib/nitrogen_core/ebin"
+          mkdir -p /tmp/arkachat_test_beams
+          erlc -pa "$APP_EBIN" -pa "$NITROGEN_EBIN" \
+            -o /tmp/arkachat_test_beams \
+            test/shield_bridge_tests.erl test/bot_tests.erl
+        working-directory: arkachat-nitrogen/app
+
+      - name: Run EUnit tests
+        run: |
+          PA_ARGS=""
+          for d in $(find _build/default/lib -name "ebin" -type d); do
+            PA_ARGS="$PA_ARGS -pa $d"
+          done
+          PA_ARGS="$PA_ARGS -pa _build/test/lib/arkachat/ebin"
+          PA_ARGS="$PA_ARGS -pa /tmp/arkachat_test_beams"
+
+          erl -noshell $PA_ARGS \
+            -eval '
+              application:ensure_all_started(crypto),
+              Results = eunit:test([shield_bridge_tests, bot_tests], [verbose]),
+              case Results of
+                  ok    -> halt(0);
+                  error -> halt(1)
+              end.
+            '
+        working-directory: arkachat-nitrogen/app

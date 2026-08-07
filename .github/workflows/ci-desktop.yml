@@ -1,0 +1,97 @@
+name: Desktop CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'arkachat-desktop/**'
+      - 'arkachat-web/**'
+      - '.github/workflows/ci-desktop.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'arkachat-desktop/**'
+      - 'arkachat-web/**'
+      - '.github/workflows/ci-desktop.yml'
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: Linux
+            electron_args: '--linux'
+            artifact: 'arkachat-linux'
+            path: 'arkachat-desktop/dist/*.AppImage'
+
+          - os: macos-latest
+            name: macOS
+            electron_args: '--mac'
+            artifact: 'arkachat-macos'
+            path: 'arkachat-desktop/dist/*.dmg'
+
+          - os: windows-latest
+            name: Windows
+            electron_args: '--win'
+            artifact: 'arkachat-windows'
+            path: 'arkachat-desktop/dist/*.exe'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Stub local Shield package for CI
+        shell: bash
+        run: |
+          PKG='arkachat-web/package.json'
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('$PKG', 'utf8'));
+            delete pkg.dependencies['@dikestra/shield'];
+            fs.writeFileSync('$PKG', JSON.stringify(pkg, null, 2));
+          "
+
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: arkachat-web
+
+      - name: Build web renderer (Electron export)
+        run: npm run build
+        working-directory: arkachat-web
+        env:
+          BUILD_TARGET: electron
+          NEXT_TELEMETRY_DISABLED: '1'
+
+      - name: Copy web renderer to desktop
+        shell: bash
+        run: |
+          mkdir -p arkachat-desktop/renderer
+          cp -r arkachat-web/out/. arkachat-desktop/renderer/
+
+      - name: Install desktop dependencies
+        run: npm ci
+        working-directory: arkachat-desktop
+
+      - name: Build Electron app
+        run: npx electron-builder ${{ matrix.electron_args }} --publish=never
+        working-directory: arkachat-desktop
+        env:
+          # Disable code signing for CI builds
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.path }}
+          if-no-files-found: warn

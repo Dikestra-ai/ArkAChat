@@ -1,0 +1,50 @@
+name: Android CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'arkachat-android/**'
+      - '.github/workflows/ci-android.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'arkachat-android/**'
+      - '.github/workflows/ci-android.yml'
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+        working-directory: arkachat-android
+
+      - name: Run unit tests
+        run: ./gradlew test --no-daemon
+        working-directory: arkachat-android
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --no-daemon
+        working-directory: arkachat-android
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: arkachat-debug
+          path: arkachat-android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: warn
