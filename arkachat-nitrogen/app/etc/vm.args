@@ -1,0 +1,6 @@
+## Erlang VM args for ArkAChat
+-name arkachat@127.0.0.1
+-setcookie arkachat_secret
++K true
++A 16
+-env ERL_MAX_PORTS 65536

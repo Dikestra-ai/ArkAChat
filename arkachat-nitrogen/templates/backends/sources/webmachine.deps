@@ -1,0 +1,1 @@
+{webmachine, {git, "https://github.com/webmachine/webmachine", {tag, "1.12.0"}}}

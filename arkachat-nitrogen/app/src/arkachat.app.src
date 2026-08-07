@@ -1,0 +1,12 @@
+{application, arkachat, [
+    {description, "ArkAChat Nitrogen Web Interface"},
+    {vsn, "1.0.0"},
+    {registered, []},
+    {mod, {arkachat_app, []}},
+    {applications, [
+        kernel, stdlib, crypto, inets,
+        cowboy, nitrogen_core, jsx
+    ]},
+    {env, []},
+    {modules, []}
+]}.
