@@ -39,6 +39,8 @@ object ShieldUtils {
 // ── StreamCipher ──────────────────────────────────────────────────────────────
 
 class StreamCipher private constructor() : AutoCloseable {
+    fun encrypt(plaintext: ByteArray): ByteArray = notImpl()
+    fun decrypt(ciphertext: ByteArray): ByteArray = notImpl()
     fun encryptFile(inputPath: String, outputPath: String): Unit = notImpl()
     fun decryptFile(inputPath: String, outputPath: String): Unit = notImpl()
     override fun close() {}
