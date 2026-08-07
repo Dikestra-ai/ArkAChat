@@ -12,12 +12,14 @@
 
 -record(state, {id :: string(), mod :: module()}).
 
+bot_name(BotId) -> list_to_atom("bot_" ++ BotId).
+
 start_link(BotId, Module) ->
-    gen_server:start_link({local, {bot, BotId}}, ?MODULE, {BotId, Module}, []).
+    gen_server:start_link({local, bot_name(BotId)}, ?MODULE, {BotId, Module}, []).
 
 %% Send a text from Sender to bot BotId. Returns the bot's reply string.
 send(BotId, Sender, Text) ->
-    gen_server:call({bot, BotId}, {message, Sender, Text}).
+    gen_server:call(bot_name(BotId), {message, Sender, Text}).
 
 init({BotId, Module}) ->
     {ok, #state{id = BotId, mod = Module}}.

@@ -3,16 +3,14 @@
 %% group — group chat page with member list panel.
 %% URL: /group?id=<group_id>
 %%
--module(group).
+-module(group_page).
 -compile(export_all).
 -include_lib("nitrogen_core/include/wf.hrl").
 
 main() -> #template{file = "./priv/templates/app.html"}.
 
 title() ->
-    Id   = group_id(),
-    Name = group_name(Id),
-    "ArkAChat — " ++ Name.
+    "ArkAChat \226\128\148 " ++ group_name(group_id()).
 
 body() ->
     Id     = group_id(),
@@ -21,37 +19,33 @@ body() ->
     wf:comet_global(fun() -> comet_loop(ConvId) end, ConvId),
     [
         #panel{class = "chat-header", body = [
-            #link{text = "← Back", url = "/chats", class = "back-link"},
+            #link{url = "/chats", text = "\226\134\144 Back", class = "back-link"},
             #span{class = "chat-title", text = Name},
-            #span{class = "shield-badge", text = "🔒 Group"},
+            #span{class = "shield-badge", text = "\360\237\224\222 Group"},
             #button{text = "Members", class = "btn-members",
                     postback = toggle_members}
         ]},
-
         #panel{class = "group-layout", body = [
-            %% Messages pane
             #panel{id = messages, class = "messages-panel",
                    body = render_messages(ConvId)},
-            %% Member sidebar (collapsible)
             #panel{id = member_panel, class = "member-panel",
                    body = render_members(Id)}
         ]},
-
         message_input(Id)
     ].
 
 message_input(GroupId) ->
     #panel{class = "input-bar", body = [
         #textbox{id = msg_input, class = "msg-input",
-                 placeholder = "Group message (Shield-encrypted)…",
+                 placeholder = "Group message (Shield-encrypted)\226\128\166",
                  next = send_btn},
         #button{id = send_btn, class = "btn-send", text = "Send",
                 postback = {send, GroupId}}
     ]}.
 
 render_messages(ConvId) ->
-    Msgs = shield_bridge:get_messages(ConvId),
     Me   = me(),
+    Msgs = shield_bridge:get_messages(ConvId),
     [ message_bubble(M, Me) || M <- Msgs ].
 
 message_bubble(#{sender := Sender, text := Text, ts := Ts}, Me) ->
@@ -66,29 +60,30 @@ message_bubble(#{sender := Sender, text := Text, ts := Ts}, Me) ->
     ]}.
 
 render_members(GroupId) ->
-    Members = shield_bridge:group_members(GroupId),
+    Members  = shield_bridge:group_members(GroupId),
     Contacts = shield_bridge:get_contacts(),
-    Items = [ member_item(M, Contacts) || M <- Members ],
+    Items    = [ member_item(M, Contacts) || M <- Members ],
     [
         #h3{text = "Members"},
         #panel{class = "member-list", body = Items},
         #panel{class = "add-member", body = [
-            #textbox{id = new_member_id, placeholder = "Contact ID…"},
+            #textbox{id = new_member_id, placeholder = "Contact ID\226\128\166"},
             #button{text = "Add", postback = {add_member, GroupId}}
         ]}
     ].
 
 member_item(MemberId, Contacts) ->
-    Name = case lists:filter(fun(#{id := Id}) -> Id =:= MemberId end, Contacts) of
-        [#{name := N} | _] -> N;
-        _                  -> MemberId
+    Name = case [ maps:get(name, C)
+                  || C <- Contacts, maps:get(id, C) =:= MemberId ] of
+        [N|_] -> N;
+        _     -> MemberId
     end,
     #panel{class = "member-item", body = [
-        #span{class = "chat-icon", text = "👤 "},
+        #span{class = "chat-icon", text = "\360\237\221\244 "},
         #span{text = Name}
     ]}.
 
-%% ── Events ────────────────────────────────────────────────────────────────
+%% ── Events ───────────────────────────────────────────────────────────────────
 
 event({send, GroupId}) ->
     Text   = wf:q(msg_input),
@@ -103,37 +98,40 @@ event({send, GroupId}) ->
 event({add_member, GroupId}) ->
     ContactId = wf:q(new_member_id),
     shield_bridge:add_group_member(GroupId, ContactId),
-    wf:replace(member_panel, #panel{id = member_panel, class = "member-panel",
-                                    body = render_members(GroupId)}),
+    wf:replace(member_panel,
+               #panel{id = member_panel, class = "member-panel",
+                      body = render_members(GroupId)}),
     wf:set(new_member_id, "");
 
 event(toggle_members) ->
-    wf:wire(#toggle{target = member_panel});
+    wf:wire("member_panel", #toggle{});
 
 event(_) -> ok.
 
-%% ── Comet ────────────────────────────────────────────────────────────────
+%% ── Comet ─────────────────────────────────────────────────────────────────────
 
 comet_loop(ConvId) ->
     receive
         refresh ->
-            wf:replace(messages, #panel{id = messages, class = "messages-panel",
-                                        body = render_messages(ConvId)}),
+            wf:replace(messages,
+                #panel{id = messages, class = "messages-panel",
+                       body = render_messages(ConvId)}),
             wf:flush(),
             comet_loop(ConvId);
         _ ->
             comet_loop(ConvId)
     end.
 
-%% ── Helpers ───────────────────────────────────────────────────────────────
+%% ── Helpers ──────────────────────────────────────────────────────────────────
 
 group_id() -> wf:q(id).
 
 group_name(Id) ->
-    Groups = shield_bridge:get_groups(),
-    case lists:filter(fun(#{id := GId}) -> GId =:= Id end, Groups) of
-        [#{name := N} | _] -> N;
-        _                  -> Id
+    case [ maps:get(name, G)
+           || G <- shield_bridge:get_groups(),
+              maps:get(id, G) =:= Id ] of
+        [N|_] -> N;
+        _     -> Id
     end.
 
 me() ->
@@ -143,5 +141,5 @@ me() ->
     end.
 
 format_ts(Ts) ->
-    {{_, _, _}, {H, M, S}} = calendar:system_time_to_local_time(Ts, millisecond),
+    {{_,_,_},{H,M,S}} = calendar:system_time_to_local_time(Ts, millisecond),
     io_lib:format("~2..0w:~2..0w:~2..0w", [H, M, S]).

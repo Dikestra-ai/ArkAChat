@@ -4,9 +4,9 @@
 -export([handle/3]).
 
 handle(_BotId, _Sender, "/status") ->
-    {_, Mem} = erlang:memory(total),
+    Mem = erlang:memory(total),
     io_lib:format("Node: ~s | Memory: ~.1f MB | Procs: ~w",
-        [node(), Mem / 1_048_576, erlang:system_info(process_count)]);
+        [node(), Mem / 1048576, erlang:system_info(process_count)]);
 handle(_BotId, _Sender, "/uptime") ->
     {Uptime, _} = erlang:statistics(wall_clock),
     Secs = Uptime div 1000,

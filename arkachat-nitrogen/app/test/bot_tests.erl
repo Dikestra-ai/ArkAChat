@@ -11,6 +11,13 @@
 -module(bot_tests).
 -include_lib("eunit/include/eunit.hrl").
 
+kill_wait(Pid) ->
+    MRef = monitor(process, Pid),
+    exit(Pid, kill),
+    receive {'DOWN', MRef, process, Pid, _} -> ok
+    after 2000 -> ok
+    end.
+
 %% ── bot_echo (pure function tests, no process needed) ────────────────────────
 
 bot_echo_test_() ->
@@ -52,8 +59,8 @@ bot_genserver_test_() ->
          {BridgePid, BotPid}
      end,
      fun({BridgePid, BotPid}) ->
-         unlink(BotPid),   exit(BotPid, kill),
-         unlink(BridgePid), exit(BridgePid, kill),
+         unlink(BotPid),    kill_wait(BotPid),
+         unlink(BridgePid), kill_wait(BridgePid),
          catch ets:delete(arkachat_msgs),
          catch ets:delete(arkachat_contacts),
          catch ets:delete(arkachat_groups),
@@ -91,8 +98,8 @@ bot_sup_test_() ->
          {BridgePid, SupPid}
      end,
      fun({BridgePid, SupPid}) ->
-         unlink(SupPid),    exit(SupPid, kill),
-         unlink(BridgePid), exit(BridgePid, kill),
+         unlink(SupPid),    kill_wait(SupPid),
+         unlink(BridgePid), kill_wait(BridgePid),
          catch ets:delete(arkachat_msgs),
          catch ets:delete(arkachat_contacts),
          catch ets:delete(arkachat_groups),
