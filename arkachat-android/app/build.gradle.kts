@@ -58,6 +58,17 @@ android {
     }
 }
 
+// In CI the Shield stub throws UnsupportedOperationException at runtime.
+// Exclude tests that exercise the real crypto library so the APK build
+// still succeeds and all other tests run cleanly.
+if (System.getenv("CI") == "true" &&
+    !File(rootProject.projectDir, "../../Shield/android").exists()) {
+    tasks.withType<Test> {
+        exclude("**/crypto/GroupKeyManagerTest.class")
+        exclude("**/crypto/ShieldCompatibilityTest.class")
+    }
+}
+
 dependencies {
     // Shield library: real lib via composite build when sibling repo exists, else CI stub
     if (File(rootProject.projectDir, "../../Shield/android").exists()) {
