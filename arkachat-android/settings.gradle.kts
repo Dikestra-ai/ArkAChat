@@ -21,6 +21,6 @@ include(":app")
 // Include Shield Android library as composite build
 includeBuild("../../Shield/android") {
     dependencySubstitution {
-        substitute(module("ai.dikestra:shield")).using(project(":shield"))
+        substitute(module("ai.dikestra:shield-android")).using(project(":shield"))
     }
 }

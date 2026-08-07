@@ -59,8 +59,8 @@ android {
 }
 
 dependencies {
-    // Shield library (imported via composite build from Shield/android)
-    implementation("ai.guard8:shield-android:2.4.1")
+    // Shield library (composite build from ../../Shield/android)
+    implementation("ai.dikestra:shield-android")
 
     // Core Android
     implementation("androidx.core:core-ktx:1.12.0")
@@ -106,6 +106,13 @@ dependencies {
 
     // QR Code
     implementation("com.google.zxing:core:3.5.2")
+
+    // CameraX (for live QR scanning)
+    val cameraVersion = "1.3.1"
+    implementation("androidx.camera:camera-core:$cameraVersion")
+    implementation("androidx.camera:camera-camera2:$cameraVersion")
+    implementation("androidx.camera:camera-lifecycle:$cameraVersion")
+    implementation("androidx.camera:camera-view:$cameraVersion")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

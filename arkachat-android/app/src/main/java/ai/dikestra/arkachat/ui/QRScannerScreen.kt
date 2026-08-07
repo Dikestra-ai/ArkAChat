@@ -3,7 +3,14 @@ package ai.dikestra.arkachat.ui
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -16,11 +23,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import ai.dikestra.arkachat.viewmodel.ContactsViewModel
+import com.google.zxing.BinaryBitmap
+import com.google.zxing.MultiFormatReader
+import com.google.zxing.PlanarYUVLuminanceSource
+import com.google.zxing.common.HybridBinarizer
 import kotlinx.coroutines.launch
+import java.util.concurrent.Executors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,6 +48,7 @@ fun QRScannerScreen(
     var isProcessing by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -69,36 +85,41 @@ fun QRScannerScreen(
             contentAlignment = Alignment.Center
         ) {
             if (hasCameraPermission) {
-                // Camera preview placeholder
-                // In production, use CameraX with ML Kit barcode scanning
+                CameraPreviewWithScanner(
+                    isProcessing = isProcessing,
+                    onQRDetected = { rawValue ->
+                        if (!isProcessing) {
+                            scope.launch {
+                                isProcessing = true
+                                errorMessage = null
+                                val result = viewModel.acceptInvitation(rawValue)
+                                result.fold(
+                                    onSuccess = { onQRScanned(rawValue) },
+                                    onFailure = {
+                                        errorMessage = it.message
+                                        isProcessing = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                )
+
+                // Viewfinder overlay
                 Column(
+                    modifier = Modifier.fillMaxSize(),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(32.dp)
+                    verticalArrangement = Arrangement.Center
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(280.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Color.DarkGray),
-                        contentAlignment = Alignment.Center
+                            .size(260.dp)
+                            .border(2.dp, Color.White.copy(alpha = 0.8f), RoundedCornerShape(16.dp))
                     ) {
-                        // Scanning frame overlay
-                        Box(
-                            modifier = Modifier
-                                .size(220.dp)
-                                .background(Color.Transparent)
-                        ) {
-                            // Corner indicators would go here
-                        }
-
                         if (isProcessing) {
-                            CircularProgressIndicator(color = Color.White)
-                        } else {
-                            Icon(
-                                Icons.Default.CameraAlt,
-                                contentDescription = null,
-                                modifier = Modifier.size(64.dp),
-                                tint = Color.White.copy(alpha = 0.5f)
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                modifier = Modifier.align(Alignment.Center)
                             )
                         }
                     }
@@ -106,52 +127,21 @@ fun QRScannerScreen(
                     Spacer(modifier = Modifier.height(24.dp))
 
                     Text(
-                        text = "Position the QR code within the frame",
+                        text = if (isProcessing) "Connecting..." else "Position QR code in the frame",
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White,
                         textAlign = TextAlign.Center
                     )
 
                     errorMessage?.let { error ->
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
                         Text(
                             text = error,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error,
-                            textAlign = TextAlign.Center
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFFFF6B6B),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 32.dp)
                         )
-                    }
-
-                    Spacer(modifier = Modifier.height(32.dp))
-
-                    // Demo button - simulates scanning a QR code
-                    // Remove in production when real camera scanning is implemented
-                    OutlinedButton(
-                        onClick = {
-                            scope.launch {
-                                isProcessing = true
-                                errorMessage = null
-
-                                // Simulate QR scan - in production this comes from camera
-                                val demoQRData = """
-                                    {"version":"arkachat-1.0","queueAddress":"demo123","publicKey":"dGVzdA==","timestamp":${System.currentTimeMillis()},"displayName":"Demo User"}
-                                """.trimIndent()
-
-                                val result = viewModel.acceptInvitation(demoQRData)
-                                isProcessing = false
-
-                                result.fold(
-                                    onSuccess = { onQRScanned(demoQRData) },
-                                    onFailure = { errorMessage = it.message }
-                                )
-                            }
-                        },
-                        enabled = !isProcessing,
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = Color.White
-                        )
-                    ) {
-                        Text("Simulate Scan (Demo)")
                     }
                 }
             } else {
@@ -186,13 +176,101 @@ fun QRScannerScreen(
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    Button(
-                        onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }
-                    ) {
+                    Button(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) {
                         Text("Grant Permission")
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CameraPreviewWithScanner(
+    isProcessing: Boolean,
+    onQRDetected: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
+    val reader = remember { MultiFormatReader() }
+
+    DisposableEffect(Unit) {
+        onDispose { cameraExecutor.shutdown() }
+    }
+
+    AndroidView(
+        modifier = Modifier.fillMaxSize(),
+        factory = { ctx ->
+            val previewView = PreviewView(ctx).apply {
+                implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+            }
+
+            val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
+            cameraProviderFuture.addListener({
+                val cameraProvider = cameraProviderFuture.get()
+
+                val preview = Preview.Builder().build().also {
+                    it.setSurfaceProvider(previewView.surfaceProvider)
+                }
+
+                val imageAnalysis = ImageAnalysis.Builder()
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .build()
+                    .also { analysis ->
+                        analysis.setAnalyzer(cameraExecutor) { imageProxy ->
+                            if (!isProcessing) {
+                                decodeQR(imageProxy, reader, onQRDetected)
+                            } else {
+                                imageProxy.close()
+                            }
+                        }
+                    }
+
+                try {
+                    cameraProvider.unbindAll()
+                    cameraProvider.bindToLifecycle(
+                        lifecycleOwner,
+                        CameraSelector.DEFAULT_BACK_CAMERA,
+                        preview,
+                        imageAnalysis
+                    )
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }, ContextCompat.getMainExecutor(ctx))
+
+            previewView
+        }
+    )
+}
+
+private fun decodeQR(
+    imageProxy: ImageProxy,
+    reader: MultiFormatReader,
+    onQRDetected: (String) -> Unit
+) {
+    try {
+        val buffer = imageProxy.planes[0].buffer
+        val bytes = ByteArray(buffer.remaining())
+        buffer.get(bytes)
+
+        val source = PlanarYUVLuminanceSource(
+            bytes,
+            imageProxy.width,
+            imageProxy.height,
+            0, 0,
+            imageProxy.width,
+            imageProxy.height,
+            false
+        )
+        val bitmap = BinaryBitmap(HybridBinarizer(source))
+        val result = reader.decodeWithState(bitmap)
+        onQRDetected(result.text)
+    } catch (_: Exception) {
+        // No QR code found in this frame — normal, keep scanning
+    } finally {
+        reader.reset()
+        imageProxy.close()
     }
 }
