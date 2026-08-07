@@ -30,9 +30,9 @@
 
 **ArkAChat** is a quantum-resistant messaging application combining:
 - **SimpleX Chat**: Zero-identifier messaging protocol (no phone numbers, no metadata)
-- **Dikestra AI Shield v1.1.0**: EXPTIME-secure encryption (survives quantum computers + P=NP proofs)
+- **Dikestra AI Shield v2.4.1**: EXPTIME-secure encryption (survives quantum computers + P=NP proofs)
 
-### Shield v1.1.0 Features Used
+### Shield v2.4.1 Features Used
 
 | Feature | Description | ArkAChat Usage |
 |---------|-------------|-----------------|
@@ -41,7 +41,7 @@
 | `quickEncrypt` | Fast symmetric encryption | Metadata encryption |
 | `SecureKeyStore` | Hardware-backed storage (Android/iOS) | Key protection |
 | `TOTP` | Time-based OTP | Optional 2FA |
-| `confidential` | TEE attestation (v1.1.0) | Server-side key release |
+| `confidential` | TEE attestation (v2.4.1) | Server-side key release |
 
 ### Why ArkAChat?
 
@@ -55,7 +55,7 @@
 | Images/videos | ✅ | ✅ | ✅ | ✅ |
 | Desktop apps | ✅ | ✅ | ✅ | ✅ |
 | Web version | ✅ | ❌ | ❌ | ✅ (with Shield WASM) |
-| TEE support | ❌ | ❌ | ❌ | ✅ (Shield v1.1.0) |
+| TEE support | ❌ | ❌ | ❌ | ✅ (Shield v2.4.1) |
 
 ### Key Advantages
 
@@ -132,7 +132,7 @@
 │  │ Jetpack       │  │ Tailwind CSS  │  │ React         │      │
 │  │ Compose       │  │ shadcn/ui     │  │ TypeScript    │      │
 │  ├───────────────┤  ├───────────────┤  ├───────────────┤      │
-│  │ Shield        │  │ @guard8/      │  │ @guard8/      │      │
+│  │ Shield        │  │ @dikestra/    │  │ @dikestra/    │      │
 │  │ Android SDK   │  │ shield-wasm   │  │ shield        │      │
 │  ├───────────────┤  ├───────────────┤  ├───────────────┤      │
 │  │ Android       │  │ IndexedDB     │  │ OS Keychain   │      │
@@ -140,7 +140,7 @@
 │  └───────────────┘  └───────────────┘  └───────────────┘      │
 │                                                                 │
 ├─────────────────────────────────────────────────────────────────┤
-│              Shield Crypto Layer v1.1.0 (Unified)               │
+│              Shield Crypto Layer v2.4.1 (Unified)               │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │ • RatchetSession (forward secrecy, per-message keys)    │   │
 │  │ • StreamCipher (large file encryption, ~160 MB/s)       │   │
@@ -148,7 +148,7 @@
 │  │ • SymmetricSignature (HMAC-SHA256 authenticity)         │   │
 │  │ • TOTP (optional 2FA for additional security)           │   │
 │  │ • SecureKeyStore (hardware-backed key storage)          │   │
-│  │ • TEEKeyManager (attestation-gated keys) [NEW v1.1.0]   │   │
+│  │ • TEEKeyManager (attestation-gated keys) [since v1.1.0]   │   │
 │  └─────────────────────────────────────────────────────────┘   │
 ├─────────────────────────────────────────────────────────────────┤
 │              SimpleX Messaging Protocol (SMP)                   │
@@ -321,7 +321,7 @@ arkachat-android/
 │   │   │   ├── Contact.kt              (Contact entity)
 │   │   │   ├── Group.kt                (Group + Member + Key entities)
 │   │   │   └── MediaFile.kt            (File metadata)
-│   │   ├── crypto/                     ✅ Shield v1.1.0
+│   │   ├── crypto/                     ✅ Shield v2.4.1
 │   │   │   ├── ShieldCrypto.kt         (RatchetSession encryption)
 │   │   │   ├── GroupKeyManager.kt      (Group key rotation)
 │   │   │   ├── KeyManager.kt           (Android Keystore)
@@ -387,8 +387,8 @@ android {
 }
 
 dependencies {
-    // Shield Android SDK v1.1.0
-    implementation("ai.guard8:shield-android:1.1.0")
+    // Shield Android SDK v2.4.1
+    implementation("ai.guard8:shield-android:2.4.1")
 
     // Jetpack Compose
     implementation(platform("androidx.compose:compose-bom:2024.01.00"))
@@ -436,7 +436,7 @@ import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * ArkAChat encryption layer using Shield v1.1.0
+ * ArkAChat encryption layer using Shield v2.4.1
  * Provides quantum-safe encryption for all messages and media
  */
 class ShieldCrypto(private val context: Context) {
@@ -653,7 +653,7 @@ arkachat-web/
 **File:** `src/lib/shield/crypto.ts`
 
 ```typescript
-import { ShieldBrowser } from '@guard8/shield-browser';
+import { ShieldBrowser } from '@dikestra/shield-browser';
 
 export class WebShieldCrypto {
   private shield: ShieldBrowser;
@@ -854,9 +854,9 @@ class DevicePairing {
 | MITM | QR key exchange |
 | Metadata | No identifiers |
 | Device theft | Hardware keystore + biometric |
-| Compromised server keys | TEE attestation (Shield v1.1.0) |
+| Compromised server keys | TEE attestation (Shield v2.4.1) |
 
-### Shield v1.1.0 Security Parameters
+### Shield v2.4.1 Security Parameters
 
 | Parameter | Value |
 |-----------|-------|
@@ -871,7 +871,7 @@ class DevicePairing {
 ## Implementation Roadmap
 
 ### Phase 1: Android MVP ✅ COMPLETE
-- ✅ Core setup + Shield v1.1.0 integration
+- ✅ Core setup + Shield v2.4.1 integration
 - ✅ UI + messaging (Jetpack Compose)
 - ✅ Media encryption (StreamCipher)
 - ✅ Group chat support
@@ -915,7 +915,7 @@ class DevicePairing {
 
 ## Performance Benchmarks
 
-| Operation | Shield v1.1.0 | Notes |
+| Operation | Shield v2.4.1 | Notes |
 |-----------|---------------|-------|
 | Text encryption | <1ms | Per message |
 | File (10MB) | ~63ms | StreamCipher |
@@ -949,14 +949,14 @@ npm run build:windows
 
 ## Related Projects
 
-- **Shield**: `/data/git/Dikestra AI/Shield` - Core encryption library (v1.1.0)
+- **Shield**: `/data/git/Dikestra-ai/Shield` - Core encryption library (v2.4.1)
 - **DOMGuard**: `/data/git/Dikestra AI/DOMGuard` - Browser security
 - **TaskGuard**: `/data/git/Dikestra AI/TaskGuard` - Task management
 
 ## Shield Resources
 
-- **crates.io**: `shield-core = "1.1"` (with `confidential` feature for TEE)
-- **npm**: `@guard8/shield`, `@guard8/shield-browser`
+- **crates.io**: `shield-core = "2.4.1"` (with `confidential` feature for TEE)
+- **npm**: `@dikestra/shield`, `@dikestra/shield-browser`
 - **PyPI**: `shield-crypto`
 - **GitHub**: https://github.com/Dikestra-ai/Shield
 

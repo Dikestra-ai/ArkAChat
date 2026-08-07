@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ArkAChat is a quantum-resistant messaging application combining:
 - **SimpleX Chat Protocol**: Zero-identifier messaging (no phone numbers, pairwise connections only)
-- **Dikestra AI Shield v1.1.0**: EXPTIME-secure encryption with forward secrecy
+- **Dikestra AI Shield v2.4.1**: EXPTIME-secure encryption with forward secrecy
 
 Target platforms: Android (Kotlin/Jetpack Compose), Web (React/Next.js), Desktop (Electron)
 
@@ -69,7 +69,7 @@ arkachat-desktop/              # Desktop app (Electron)
 │   └── updater.js              # Auto-updater
 ```
 
-### Encryption Layer (Shield v1.1.0)
+### Encryption Layer (Shield v2.4.1)
 - `RatchetSession`: Per-message encryption with forward secrecy
 - `StreamCipher`: Large file encryption (~160 MB/s) for images/videos
 - `SecureKeyStore`: Hardware-backed key storage (Android Keystore, OS Keychain)
@@ -90,9 +90,9 @@ arkachat-desktop/              # Desktop app (Electron)
 
 ## Shield Dependencies
 
-- **Rust**: `shield-core = "1.1"` (with `confidential` feature for TEE)
-- **npm**: `@guard8/shield`, `@guard8/shield-browser`
-- **Android**: `ai.guard8:shield-android:1.1.0`
+- **Rust**: `shield-core = "2.4.1"` (with `confidential` feature for TEE)
+- **npm**: `@dikestra/shield`, `@dikestra/shield-browser`
+- **Android**: `ai.guard8:shield-android:2.4.1`
 
 ## Task Management
 

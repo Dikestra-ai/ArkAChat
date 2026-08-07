@@ -5,7 +5,7 @@
     "Dikestra AI"
   ],
   "description": "EXPTIME-secure encryption library - Rust core implementation",
-  "version": "1.1.0",
+  "version": "2.4.1",
   "license": "CC0-1.0",
   "repository": {
     "type": "git",

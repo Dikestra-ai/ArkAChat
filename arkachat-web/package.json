@@ -11,7 +11,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@guard8/shield": "file:../../Shield/javascript",
+    "@dikestra/shield": "file:../../Shield/javascript",
     "@tanstack/react-virtual": "^3.0.0",
     "@types/qrcode": "^1.5.6",
     "class-variance-authority": "^0.7.0",

@@ -60,7 +60,7 @@ android {
 
 dependencies {
     // Shield library (imported via composite build from Shield/android)
-    implementation("ai.guard8:shield-android:1.1.0")
+    implementation("ai.guard8:shield-android:2.4.1")
 
     // Core Android
     implementation("androidx.core:core-ktx:1.12.0")
