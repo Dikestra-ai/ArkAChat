@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import QRCode from 'qrcode';
 import { X, QrCode, Camera, Shield as ShieldIcon } from 'lucide-react';
 import { useChatStore } from '@/lib/storage/chatStore';
 import { simplexClient } from '@/lib/simplex/client';
@@ -18,8 +19,20 @@ export function NewContactModal({ onClose }: NewContactModalProps) {
   const [qrData, setQrData] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const addContact = useChatStore((state) => state.addContact);
+
+  useEffect(() => {
+    if (qrData && qrCanvasRef.current) {
+      QRCode.toCanvas(qrCanvasRef.current, qrData, {
+        width: 200,
+        margin: 2,
+        color: { dark: '#1e293b', light: '#ffffff' },
+        errorCorrectionLevel: 'M',
+      }).catch(console.error);
+    }
+  }, [qrData]);
 
   // Handle Escape key to close modal
   useEffect(() => {
@@ -176,45 +189,52 @@ export function NewContactModal({ onClose }: NewContactModalProps) {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="flex items-center justify-center">
-                <ShieldIcon className="w-8 h-8 text-green-500" />
-              </div>
-
-              <p className="text-sm text-gray-600 text-center">
-                Share this code with your contact to connect securely
-              </p>
-
-              <input
-                type="text"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Your display name"
-                className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-
               {qrData ? (
-                <div className="bg-gray-100 rounded-lg p-4">
-                  <p className="text-xs text-gray-500 mb-2">
-                    Share this with your contact:
-                  </p>
-                  <textarea
-                    value={qrData}
-                    readOnly
-                    className="w-full h-24 bg-white border rounded p-2 text-xs font-mono resize-none"
-                    onClick={(e) => (e.target as HTMLTextAreaElement).select()}
-                  />
-                  <p className="text-xs text-gray-500 mt-2 text-center">
-                    Expires in 5 minutes
-                  </p>
-                </div>
+                <>
+                  <div className="flex justify-center">
+                    <canvas ref={qrCanvasRef} />
+                  </div>
+                  <div className="bg-gray-100 rounded-lg p-4">
+                    <p className="text-xs text-gray-500 mb-2">
+                      Share this with your contact:
+                    </p>
+                    <textarea
+                      value={qrData}
+                      readOnly
+                      className="w-full h-24 bg-white border rounded p-2 text-xs font-mono resize-none"
+                      onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+                    />
+                    <p className="text-xs text-gray-500 mt-2 text-center">
+                      Expires in 5 minutes
+                    </p>
+                  </div>
+                </>
               ) : (
-                <button
-                  onClick={generateQR}
-                  disabled={isGenerating || !displayName.trim()}
-                  className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
-                >
-                  {isGenerating ? 'Generating...' : 'Generate QR Code'}
-                </button>
+                <>
+                  <div className="flex items-center justify-center">
+                    <ShieldIcon className="w-8 h-8 text-green-500" />
+                  </div>
+
+                  <p className="text-sm text-gray-600 text-center">
+                    Share this code with your contact to connect securely
+                  </p>
+
+                  <input
+                    type="text"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="Your display name"
+                    className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+
+                  <button
+                    onClick={generateQR}
+                    disabled={isGenerating || !displayName.trim()}
+                    className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
+                  >
+                    {isGenerating ? 'Generating...' : 'Generate QR Code'}
+                  </button>
+                </>
               )}
 
               {error && (

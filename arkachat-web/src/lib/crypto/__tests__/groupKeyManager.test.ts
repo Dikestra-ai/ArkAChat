@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { GroupKeyManager } from '../groupKeyManager';
 import { useGroupStore, type Group, type GroupKey } from '../../storage/groupStore';
+import { pad } from '../messagePadding';
 
 // Mock Shield
 vi.mock('../../shield/crypto', () => ({
@@ -25,18 +26,20 @@ describe('GroupKeyManager', () => {
 
   beforeEach(() => {
     keyManager = new GroupKeyManager();
+    // Bypass IndexedDB — inject a fixed master key directly
+    vi.spyOn(keyManager as any, 'getMasterKeyBytes').mockResolvedValue(new Uint8Array(32).fill(0xaa));
     // Reset group store
     useGroupStore.setState({ groups: [], members: {}, messages: {}, keys: [] });
   });
 
   describe('generateGroupKey', () => {
-    test('creates 32-byte key', () => {
-      const key = keyManager.generateGroupKey();
+    test('creates 32-byte key', async () => {
+      const key = await keyManager.generateGroupKey();
       expect(key.length).toBe(32);
     });
 
-    test('generates random bytes', () => {
-      const key = keyManager.generateGroupKey();
+    test('generates random bytes', async () => {
+      const key = await keyManager.generateGroupKey();
       expect(key[0]).toBe(0x42); // Our mock fills with 0x42
     });
   });
@@ -153,12 +156,14 @@ describe('GroupKeyManager', () => {
         keyRotationCount: 0,
       });
 
-      // Mock ciphertext (plaintext + 0xee from mock)
-      const ciphertext = new Uint8Array([0x01, 0x02, 0x03, 0xee]);
+      // Build ciphertext that mirrors what encryptGroupMessage produces:
+      // pad(plaintext) then mock quickEncrypt appends 0xee
+      const plaintext = new Uint8Array([0x01, 0x02, 0x03]);
+      const ciphertext = new Uint8Array([...pad(plaintext), 0xee]);
 
       const decrypted = await keyManager.decryptGroupMessage(groupId, groupKey.id, ciphertext);
 
-      // Our mock removes the last byte
+      // Mock quickDecrypt strips the last byte; unpad recovers original plaintext
       expect(Array.from(decrypted)).toEqual([0x01, 0x02, 0x03]);
     });
 

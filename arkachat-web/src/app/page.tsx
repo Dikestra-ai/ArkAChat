@@ -72,7 +72,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="container mx-auto px-4 py-8 text-center text-blue-200">
-        <p>Built with Dikestra AI Shield v1.1.0</p>
+        <p>Built with Dikestra AI Shield v2.4.1</p>
       </footer>
     </div>
   );
