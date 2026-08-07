@@ -65,6 +65,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
+          cache-dependency-path: |
+            arkachat-web/package-lock.json
+            arkachat-desktop/package-lock.json
 
       - name: Stub Shield for CI
         shell: bash
