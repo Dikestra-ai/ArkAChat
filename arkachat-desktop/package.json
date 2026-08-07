@@ -2,6 +2,12 @@
   "name": "arkachat-desktop",
   "version": "1.0.0",
   "description": "ArkAChat Desktop - Quantum-safe messaging",
+  "homepage": "https://github.com/Dikestra-ai/ArkAChat",
+  "author": "Dikestra AI <info@dikestra.ai>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Dikestra-ai/ArkAChat.git"
+  },
   "main": "main/index.js",
   "scripts": {
     "dev": "electron .",
@@ -22,6 +28,11 @@
   "build": {
     "appId": "ai.dikestra.arkachat",
     "productName": "ArkAChat",
+    "publish": {
+      "provider": "github",
+      "owner": "Dikestra-ai",
+      "repo": "ArkAChat"
+    },
     "directories": {
       "output": "dist"
     },
