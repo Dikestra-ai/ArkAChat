@@ -867,14 +867,18 @@ export class ShieldSimplexBridge {
       });
     }
 
-    // Save to store
+    // Save to store first so the group is immediately visible.
     useGroupStore.getState().addGroup(group);
     useGroupStore.getState().setMembers(groupId, members);
 
-    // Distribute group key to all members
-    const decryptedKey = await this.groupKeys.getDecryptedCurrentKey(groupId);
-    if (decryptedKey) {
-      await this.distributeGroupKey(groupId, decryptedKey, groupKey.id, members, 0);
+    // Distribute group key to all members; best-effort when offline.
+    try {
+      const decryptedKey = await this.groupKeys.getDecryptedCurrentKey(groupId);
+      if (decryptedKey) {
+        await this.distributeGroupKey(groupId, decryptedKey, groupKey.id, members, 0);
+      }
+    } catch {
+      // Key distribution failed (offline). Members will receive the key when connected.
     }
 
     return group;
@@ -910,35 +914,7 @@ export class ShieldSimplexBridge {
       new TextEncoder().encode(envelopeJson)
     );
 
-    // Send to all members via their pairwise channels
-    const members = useGroupStore.getState().members[groupId] || [];
-    for (const member of members) {
-      if (member.contactId === '') continue; // Skip self
-
-      const contact = useChatStore.getState().contacts.find((c) => c.id === member.contactId);
-      if (!contact) continue;
-
-      // Wrap in pairwise envelope and send
-      // Format: GROUP:groupId:keyId:base64_encrypted
-      const pairwiseEnvelope: MessageEnvelope = {
-        type: MessageType.TEXT,
-        messageId,
-        timestamp,
-        content: `GROUP:${groupId}:${group.currentKeyId}:${this.uint8ArrayToBase64(encrypted)}`,
-      };
-
-      const pairwiseJson = JSON.stringify(pairwiseEnvelope);
-      const pairwiseEncrypted = await this.crypto.encryptMessage(
-        member.contactId,
-        contact.isInitiator,
-        pairwiseJson
-      );
-
-      const queue = await this.getQueueForContact(contact);
-      await this.simplex.sendMessage(queue, pairwiseEncrypted);
-    }
-
-    // Save message locally
+    // Save message optimistically so it appears immediately in the UI.
     const message: GroupMessage = {
       id: messageId,
       contactId: '', // Empty for group messages
@@ -947,10 +923,43 @@ export class ShieldSimplexBridge {
       content: text,
       isOutgoing: true,
       timestamp,
-      status: 'sent',
+      status: 'sending',
     };
-
     useGroupStore.getState().addGroupMessage(message);
+
+    try {
+      // Send to all members via their pairwise channels
+      const members = useGroupStore.getState().members[groupId] || [];
+      for (const member of members) {
+        if (member.contactId === '') continue; // Skip self
+
+        const contact = useChatStore.getState().contacts.find((c) => c.id === member.contactId);
+        if (!contact) continue;
+
+        // Wrap in pairwise envelope and send
+        // Format: GROUP:groupId:keyId:base64_encrypted
+        const pairwiseEnvelope: MessageEnvelope = {
+          type: MessageType.TEXT,
+          messageId,
+          timestamp,
+          content: `GROUP:${groupId}:${group.currentKeyId}:${this.uint8ArrayToBase64(encrypted)}`,
+        };
+
+        const pairwiseJson = JSON.stringify(pairwiseEnvelope);
+        const pairwiseEncrypted = await this.crypto.encryptMessage(
+          member.contactId,
+          contact.isInitiator,
+          pairwiseJson
+        );
+
+        const queue = await this.getQueueForContact(contact);
+        await this.simplex.sendMessage(queue, pairwiseEncrypted);
+      }
+
+      useGroupStore.getState().updateGroupMessageStatus(messageId, 'sent');
+    } catch {
+      useGroupStore.getState().updateGroupMessageStatus(messageId, 'failed');
+    }
 
     return message;
   }
