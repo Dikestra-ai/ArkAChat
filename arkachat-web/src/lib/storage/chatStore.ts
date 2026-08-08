@@ -34,9 +34,11 @@ interface ChatState {
   selectedContactId: string | null;
   isInitialized: boolean;
   connectionState: ConnectionState;
+  myDisplayName: string; // User's own display name (set when creating first invitation)
 
   // Actions
   initialize: () => void;
+  setMyDisplayName: (name: string) => void;
   selectContact: (contactId: string | null) => void;
   addContact: (contact: Contact) => void;
   updateContact: (contactId: string, updates: Partial<Contact>) => void;
@@ -59,9 +61,14 @@ export const useChatStore = create<ChatState>()(
       selectedContactId: null,
       isInitialized: false,
       connectionState: 'disconnected' as ConnectionState,
+      myDisplayName: '',
 
       initialize: () => {
         set({ isInitialized: true });
+      },
+
+      setMyDisplayName: (name) => {
+        set({ myDisplayName: name });
       },
 
       selectContact: (contactId) => {
@@ -188,6 +195,7 @@ export const useChatStore = create<ChatState>()(
       partialize: (state) => ({
         contacts: state.contacts,
         messages: state.messages,
+        myDisplayName: state.myDisplayName,
       }),
     }
   )

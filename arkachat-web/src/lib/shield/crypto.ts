@@ -93,25 +93,29 @@ export class RatchetSession {
   }
 
   /**
-   * Restore a session from persisted state.
-   * Note: WASM sessions can't be directly serialized, so we recreate from root key.
+   * Restore a session from persisted state by fast-forwarding the KDF chain.
+   *
+   * The ratchet uses a deterministic KDF chain seeded from root_key, so we can
+   * advance the send chain to sendCounter by encrypting dummy messages.
+   * The receive chain cannot be fast-forwarded without valid ciphertexts, so
+   * incoming messages from before the reload will fail to decrypt (expected).
    */
   static async fromState(state: SessionState): Promise<RatchetSession> {
     await ensureInit();
 
-    // We need to recreate the session and fast-forward the counters
-    // This is a limitation - we need to store the root key and re-derive
     const wasmSession = new WasmRatchetSession(state.rootKey, state.isInitiator);
-
     const session = new RatchetSession(wasmSession);
-    session._sendCounter = state.sendCounter;
-    session._recvCounter = state.recvCounter;
 
-    // Fast-forward send chain by encrypting dummy messages
+    // Fast-forward the send KDF chain so our next encrypt uses the correct key
+    const dummy = new Uint8Array(1);
     for (let i = 0; i < state.sendCounter; i++) {
-      // We can't actually fast-forward the WASM session without the original messages
-      // This is handled by storing messages we need to replay
+      session.wasmSession.encrypt(dummy);
     }
+    session._sendCounter = state.sendCounter;
+    // recvCounter cannot be restored without ciphertexts; new incoming messages
+    // after reload will decrypt correctly as long as the remote also reloaded,
+    // or as long as no messages arrived while we were offline.
+    session._recvCounter = 0;
 
     return session;
   }
@@ -483,9 +487,12 @@ export class WebShieldCrypto {
         } else {
           try {
             const rootKey = new Uint8Array(record.rootKey);
-            // Create new WASM session - note that counters won't match exactly
-            // For production, we'd need a more sophisticated session restoration
-            const session = await RatchetSession.create(rootKey, record.isInitiator);
+            const session = await RatchetSession.fromState({
+              rootKey,
+              isInitiator: record.isInitiator,
+              sendCounter: record.sendCounter ?? 0,
+              recvCounter: record.recvCounter ?? 0,
+            });
             resolve({ session, rootKey, isInitiator: record.isInitiator });
           } catch (error) {
             console.error('Failed to restore session:', error);

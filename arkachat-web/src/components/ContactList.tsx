@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Shield, Plus, Settings, Search } from 'lucide-react';
+import { Shield, Plus, Settings, Search, Wifi, WifiOff } from 'lucide-react';
 import { useChatStore, Contact } from '@/lib/storage/chatStore';
 import { AddContactModal } from './AddContactModal';
 import { SettingsModal } from './SettingsModal';
@@ -13,6 +13,7 @@ export function ContactList() {
 
   const contacts = useChatStore((state) => state.contacts);
   const selectedContactId = useChatStore((state) => state.selectedContactId);
+  const connectionState = useChatStore((state) => state.connectionState);
   const selectContact = useChatStore((state) => state.selectContact);
   const getUnreadCount = useChatStore((state) => state.getUnreadCount);
   const getLastMessage = useChatStore((state) => state.getLastMessage);
@@ -37,6 +38,13 @@ export function ContactList() {
           <div className="flex items-center space-x-2">
             <Shield className="w-6 h-6 text-green-400" />
             <span className="text-xl font-bold">ArkAChat</span>
+            {connectionState === 'connected' ? (
+              <span title="Relay connected"><Wifi className="w-3.5 h-3.5 text-green-300" /></span>
+            ) : connectionState === 'connecting' ? (
+              <span title="Connecting to relay…"><Wifi className="w-3.5 h-3.5 text-yellow-300 animate-pulse" /></span>
+            ) : (
+              <span title="Relay disconnected — messages will fail"><WifiOff className="w-3.5 h-3.5 text-red-300" /></span>
+            )}
           </div>
           <div className="flex items-center space-x-2">
             <button

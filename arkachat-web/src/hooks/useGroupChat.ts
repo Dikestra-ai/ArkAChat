@@ -1,7 +1,7 @@
 import { useEffect, useCallback } from 'react';
 import { useGroupStore, Group, GroupMember, GroupMessage } from '@/lib/storage/groupStore';
 import { useChatStore, Contact } from '@/lib/storage/chatStore';
-import { bridge } from '@/lib/bridge/shieldSimplexBridge';
+import { getBridgeInstance } from '@/components/BridgeProvider';
 
 /**
  * Hook to access group chat functionality.
@@ -26,7 +26,7 @@ export function useGroupChatBridge() {
   const createGroup = useCallback(
     async (name: string, memberContactIds: string[]): Promise<Group | null> => {
       try {
-        return await bridge.createGroup(name, memberContactIds);
+        return await getBridgeInstance()?.createGroup(name, memberContactIds) ?? null;
       } catch (error) {
         console.error('Failed to create group:', error);
         return null;
@@ -41,7 +41,7 @@ export function useGroupChatBridge() {
   const sendGroupMessage = useCallback(
     async (groupId: string, text: string): Promise<GroupMessage | null> => {
       try {
-        return await bridge.sendGroupMessage(groupId, text);
+        return await getBridgeInstance()?.sendGroupMessage(groupId, text) ?? null;
       } catch (error) {
         console.error('Failed to send group message:', error);
         return null;
@@ -57,7 +57,7 @@ export function useGroupChatBridge() {
   const addMember = useCallback(
     async (groupId: string, contactId: string): Promise<GroupMember | null> => {
       try {
-        return await bridge.addGroupMember(groupId, contactId);
+        return await getBridgeInstance()?.addGroupMember(groupId, contactId) ?? null;
       } catch (error) {
         console.error('Failed to add member:', error);
         return null;
@@ -73,7 +73,7 @@ export function useGroupChatBridge() {
   const removeMember = useCallback(
     async (groupId: string, contactId: string): Promise<boolean> => {
       try {
-        await bridge.removeGroupMember(groupId, contactId);
+        await getBridgeInstance()?.removeGroupMember(groupId, contactId);
         return true;
       } catch (error) {
         console.error('Failed to remove member:', error);
@@ -88,7 +88,7 @@ export function useGroupChatBridge() {
    */
   const leaveGroup = useCallback(async (groupId: string): Promise<boolean> => {
     try {
-      await bridge.leaveGroup(groupId);
+      await getBridgeInstance()?.leaveGroup(groupId);
       return true;
     } catch (error) {
       console.error('Failed to leave group:', error);
@@ -103,7 +103,7 @@ export function useGroupChatBridge() {
   const updateGroupName = useCallback(
     async (groupId: string, newName: string): Promise<boolean> => {
       try {
-        await bridge.updateGroupName(groupId, newName);
+        await getBridgeInstance()?.updateGroupName(groupId, newName);
         return true;
       } catch (error) {
         console.error('Failed to update group name:', error);
@@ -120,7 +120,7 @@ export function useGroupChatBridge() {
   const promoteToAdmin = useCallback(
     async (groupId: string, contactId: string): Promise<boolean> => {
       try {
-        await bridge.promoteToAdmin(groupId, contactId);
+        await getBridgeInstance()?.promoteToAdmin(groupId, contactId);
         return true;
       } catch (error) {
         console.error('Failed to promote member:', error);
@@ -137,7 +137,7 @@ export function useGroupChatBridge() {
   const demoteToMember = useCallback(
     async (groupId: string, contactId: string): Promise<boolean> => {
       try {
-        await bridge.demoteToMember(groupId, contactId);
+        await getBridgeInstance()?.demoteToMember(groupId, contactId);
         return true;
       } catch (error) {
         console.error('Failed to demote member:', error);
@@ -151,7 +151,7 @@ export function useGroupChatBridge() {
    * Check if current user is admin.
    */
   const isAdmin = useCallback((groupId: string): boolean => {
-    return bridge.isAdmin(groupId);
+    return getBridgeInstance()?.isAdmin(groupId) ?? false;
   }, []);
 
   /**

@@ -61,6 +61,7 @@ export interface MessageEnvelope {
   messageId: string;
   timestamp: number;
   content?: string;
+  senderName?: string; // Sender's display name (included in first message to update contact)
   fileId?: string;
   fileMetadata?: {
     name: string;
@@ -218,7 +219,9 @@ export class ShieldSimplexBridge {
 
     const contact: Contact = {
       id: contactId,
-      displayName,
+      // We don't know the invitee's name yet; use a pending placeholder.
+      // displayName carries OUR name (encoded in QR for the invitee), not theirs.
+      displayName: `Pending…`,
       simplexQueueUri: queueAUri,       // Queue A: inviter receives here
       outboundQueueUri: queueBUri,      // Queue B: inviter sends TO here
       isInitiator: true,
@@ -234,6 +237,11 @@ export class ShieldSimplexBridge {
     if (queueAAddress) {
       // Don't cache the send queue here — getQueueForContact will decode outboundQueueUri
       void queueAAddress; // Address is already subscribed inside createInvitation()
+    }
+
+    // Remember the user's own display name so we can include it in outgoing messages
+    if (!useChatStore.getState().myDisplayName) {
+      useChatStore.getState().setMyDisplayName(displayName);
     }
 
     return encodeInvitation(invitation);
@@ -331,11 +339,13 @@ export class ShieldSimplexBridge {
     useChatStore.getState().addMessage(message);
 
     try {
+      const myName = useChatStore.getState().myDisplayName;
       const envelope: MessageEnvelope = {
         type: MessageType.TEXT,
         messageId,
         timestamp,
         content: text,
+        senderName: myName || undefined,
       };
 
       // Encrypt with Shield
@@ -707,6 +717,11 @@ export class ShieldSimplexBridge {
   }
 
   private async handleTextMessage(contact: Contact, envelope: MessageEnvelope): Promise<void> {
+    // Update contact's display name if it's still the placeholder and sender includes their name
+    if (envelope.senderName && contact.displayName === 'Pending…') {
+      useChatStore.getState().updateContact(contact.id, { displayName: envelope.senderName });
+    }
+
     const content = envelope.content ?? '';
 
     // Check for group-related messages
