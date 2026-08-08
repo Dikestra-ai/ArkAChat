@@ -11,6 +11,7 @@
 import { WebShieldCrypto, shieldCrypto, QRExchange, Shield } from '../shield/crypto';
 import {
   WebSimplexClient,
+  ISimplexClient,
   simplexClient,
   SMPQueueAddress,
   SMPMessage,
@@ -89,7 +90,7 @@ type ConnectionCallback = (state: ConnectionState) => void;
  */
 export class ShieldSimplexBridge {
   private crypto: WebShieldCrypto;
-  private simplex: WebSimplexClient;
+  private simplex: ISimplexClient;
   private fileStorage: EncryptedFileStorage;
   private groupKeys: GroupKeyManager;
 
@@ -104,7 +105,7 @@ export class ShieldSimplexBridge {
 
   constructor(
     crypto?: WebShieldCrypto,
-    simplex?: WebSimplexClient,
+    simplex?: ISimplexClient,
     fileStorage?: EncryptedFileStorage,
     groupKeys?: GroupKeyManager
   ) {

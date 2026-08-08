@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Shield, Plus, Settings, Search } from 'lucide-react';
 import { useChatStore, Contact } from '@/lib/storage/chatStore';
-import { NewContactModal } from './NewContactModal';
+import { AddContactModal } from './AddContactModal';
 import { SettingsModal } from './SettingsModal';
 
 export function ContactList() {
@@ -96,9 +96,11 @@ export function ContactList() {
         )}
       </div>
 
-      {showNewContact && (
-        <NewContactModal onClose={() => setShowNewContact(false)} />
-      )}
+      <AddContactModal
+        isOpen={showNewContact}
+        onClose={() => setShowNewContact(false)}
+        onContactAdded={() => setShowNewContact(false)}
+      />
 
       <SettingsModal
         isOpen={showSettings}

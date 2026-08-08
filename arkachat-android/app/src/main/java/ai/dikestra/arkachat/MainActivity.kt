@@ -69,6 +69,8 @@ class MainActivity : AppCompatActivity() {
             ))
         }
 
+        WebView.setWebContentsDebuggingEnabled(true) // Allow chrome://inspect in debug builds
+
         webView = WebView(this).apply {
             swipeRefresh.addView(this)
             settings.apply {

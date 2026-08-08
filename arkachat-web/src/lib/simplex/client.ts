@@ -74,19 +74,21 @@ const KEY_SIZE = 32;
 
 /**
  * Encode queue address as SMP URI.
+ * Supports both smp:// (public SMP server) and relay:// (local dev relay) schemes.
  */
 export function encodeQueueUri(address: SMPQueueAddress): string {
   const queueIdB64 = toBase64Url(address.queueId);
   const recipientKeyB64 = toBase64Url(address.recipientKey);
   const senderPart = address.senderKey ? `/${toBase64Url(address.senderKey)}` : '';
-  return `smp://${address.server}#${queueIdB64}/${recipientKeyB64}${senderPart}`;
+  const scheme = address.server === 'local' ? 'relay' : 'smp';
+  return `${scheme}://${address.server}#${queueIdB64}/${recipientKeyB64}${senderPart}`;
 }
 
 /**
- * Decode SMP URI to queue address.
+ * Decode SMP or relay URI to queue address.
  */
 export function decodeQueueUri(uri: string): SMPQueueAddress | null {
-  const regex = /smp:\/\/([^#]+)#([^/]+)\/([^/]+)(?:\/([^/]+))?/;
+  const regex = /(?:smp|relay):\/\/([^#]+)#([^/]+)\/([^/]+)(?:\/([^/]+))?/;
   const match = uri.match(regex);
   if (!match) return null;
 
@@ -586,5 +588,261 @@ function fromBase64Url(str: string): Uint8Array {
   return bytes;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LocalRelayClient
+//
+// Connects to the local dev relay (relay/index.mjs) instead of public SMP
+// servers. Uses JSON over WebSocket, so it works from any browser or WebView
+// without needing raw TCP access to smp*.simplex.im.
+//
+// Queue URIs use the relay:// scheme: relay://local#queueId/recipientKey
+// ─────────────────────────────────────────────────────────────────────────────
+
+const LOCAL_RELAY_PORT = 3004;
+
+/** Returns the relay WS URL. Always uses localhost — on Android the adb reverse
+ *  tunnel (adb reverse tcp:3004 tcp:3004) maps localhost inside the emulator to
+ *  the host machine's relay, so both Firefox and WebView use the same URL. */
+function relayUrl(): string {
+  return `ws://localhost:${LOCAL_RELAY_PORT}`;
+}
+
+type RelayResolve = (data: unknown) => void;
+
+export class LocalRelayClient {
+  private ws: WebSocket | null = null;
+  private state: ConnectionState = 'disconnected';
+  private messageCallbacks = new Set<MessageCallback>();
+  private stateCallbacks = new Set<StateCallback>();
+  private pending = new Map<string, { resolve: RelayResolve; reject: (e: Error) => void }>();
+  private subscribedQueues = new Map<string, SMPQueueAddress>();
+
+  // ── Lifecycle ────────────────────────────────────────────────────────────
+
+  async connect(): Promise<void> {
+    if (this.state === 'connected' || this.state === 'connecting') return;
+    this.setState('connecting');
+
+    const url = relayUrl();
+    return new Promise((resolve, reject) => {
+      try {
+        const ws = new WebSocket(url);
+        ws.onopen = () => {
+          this.ws = ws;
+          this.setState('connected');
+          resolve();
+        };
+        ws.onmessage = (ev) => this.handleMessage(JSON.parse(ev.data as string));
+        ws.onerror = () => {
+          this.setState('error');
+          reject(new Error('LocalRelay: websocket error'));
+        };
+        ws.onclose = () => {
+          this.ws = null;
+          this.setState('disconnected');
+          setTimeout(() => this.connect().catch(() => {}), 5000);
+        };
+      } catch (err) {
+        this.setState('error');
+        reject(err);
+      }
+    });
+  }
+
+  disconnect(): void {
+    this.ws?.close(1000, 'disconnect');
+    this.ws = null;
+    this.setState('disconnected');
+  }
+
+  // ── Queue operations ─────────────────────────────────────────────────────
+
+  async createQueue(): Promise<SMPQueueAddress> {
+    const queueId = crypto.getRandomValues(new Uint8Array(24));
+    const recipientKey = crypto.getRandomValues(new Uint8Array(32));
+    const senderKey = crypto.getRandomValues(new Uint8Array(32));
+    const queueIdB64 = toBase64Url(queueId);
+    const recipientKeyB64 = toBase64Url(recipientKey);
+
+    await this.rpc('NEW', { queueId: queueIdB64, recipientKey: recipientKeyB64 });
+
+    const address: SMPQueueAddress = {
+      server: 'local',
+      queueId,
+      recipientKey,
+      senderKey,
+    };
+
+    await this.subscribeToQueue(address);
+    return address;
+  }
+
+  async subscribeToQueue(address: SMPQueueAddress): Promise<void> {
+    const key = toBase64Url(address.queueId);
+    if (this.subscribedQueues.has(key)) return;
+    await this.rpc('SUB', { queueId: key });
+    this.subscribedQueues.set(key, address);
+  }
+
+  async sendMessage(address: SMPQueueAddress, encryptedMessage: Uint8Array): Promise<void> {
+    const queueId = toBase64Url(address.queueId);
+    const data = toBase64Url(encryptedMessage);
+    await this.rpc('SEND', { queueId, data });
+  }
+
+  async acknowledgeMessage(address: SMPQueueAddress, msgId: Uint8Array): Promise<void> {
+    const queueId = toBase64Url(address.queueId);
+    await this.rpc('ACK', { queueId, msgId: toBase64Url(msgId) });
+  }
+
+  async createInvitation(displayName: string, shieldKey: Uint8Array): Promise<SMPInvitation> {
+    const queue = await this.createQueue();
+    return {
+      connReqUri: encodeQueueUri(queue),
+      shieldKey,
+      displayName,
+      timestamp: Date.now(),
+    };
+  }
+
+  async acceptInvitation(invitation: SMPInvitation): Promise<SMPQueueAddress> {
+    const queue = decodeQueueUri(invitation.connReqUri);
+    if (!queue) throw new Error('Invalid connection request URI');
+    // Subscribe so we receive replies on this queue's server
+    // For relay queues, the queue is already created on the relay — just subscribe
+    if (queue.server === 'local') {
+      await this.subscribeToQueue(queue);
+    }
+    return queue;
+  }
+
+  onMessage(callback: MessageCallback): () => void {
+    this.messageCallbacks.add(callback);
+    return () => this.messageCallbacks.delete(callback);
+  }
+
+  onStateChange(callback: StateCallback): () => void {
+    this.stateCallbacks.add(callback);
+    callback(this.state);
+    return () => this.stateCallbacks.delete(callback);
+  }
+
+  getState(): ConnectionState {
+    return this.state;
+  }
+
+  setProxy(_url: string | null): void { /* no-op for relay */ }
+
+  // ── Private helpers ──────────────────────────────────────────────────────
+
+  private setState(s: ConnectionState): void {
+    if (this.state === s) return;
+    this.state = s;
+    this.stateCallbacks.forEach((cb) => cb(s));
+  }
+
+  private send(obj: Record<string, unknown>): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(obj));
+    }
+  }
+
+  private async rpc(cmd: string, params: Record<string, unknown>): Promise<unknown> {
+    const id = toHex(crypto.getRandomValues(new Uint8Array(8)));
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      this.send({ cmd, id, ...params });
+      setTimeout(() => {
+        if (this.pending.has(id)) {
+          this.pending.delete(id);
+          reject(new Error(`LocalRelay: ${cmd} timed out`));
+        }
+      }, 10000);
+    });
+  }
+
+  private handleMessage(msg: Record<string, unknown>): void {
+    // Route pending RPC responses
+    const id = msg.id as string | undefined;
+    if (id && this.pending.has(id)) {
+      const { resolve, reject } = this.pending.get(id)!;
+      this.pending.delete(id);
+      if (msg.cmd === 'ERR') {
+        reject(new Error(msg.error as string));
+      } else {
+        resolve(msg);
+      }
+      return;
+    }
+
+    // Route OK acks (no id)
+    if (msg.cmd === 'OK') return;
+
+    // Incoming message pushed by relay
+    if (msg.cmd === 'MSG') {
+      const queueIdB64 = msg.queueId as string;
+      const msgIdB64 = msg.msgId as string;
+      const dataB64 = msg.data as string;
+
+      const queue = this.subscribedQueues.get(queueIdB64);
+      if (!queue) return;
+
+      const ciphertext = fromBase64Url(dataB64);
+      const msgId = fromBase64Url(msgIdB64);
+
+      const smpMsg: SMPMessage = {
+        queueAddress: queue,
+        ciphertext,
+        timestamp: Date.now(),
+        msgId,
+      };
+      this.messageCallbacks.forEach((cb) => cb(smpMsg));
+
+      // Auto-ack
+      this.send({ cmd: 'ACK', queueId: queueIdB64, msgId: msgIdB64 });
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Smart singleton: uses local relay in dev, falls back to public SMP
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ISimplexClient = Pick<WebSimplexClient,
+  'connect' | 'disconnect' | 'createQueue' | 'subscribeToQueue' |
+  'sendMessage' | 'acknowledgeMessage' | 'createInvitation' | 'acceptInvitation' |
+  'onMessage' | 'onStateChange' | 'getState' | 'setProxy'
+>;
+
+class SmartSimplexClient implements ISimplexClient {
+  private relay = new LocalRelayClient();
+  private smp = new WebSimplexClient();
+  private impl: ISimplexClient = this.smp;
+
+  async connect(servers?: string[]): Promise<void> {
+    try {
+      await this.relay.connect();
+      this.impl = this.relay;
+      console.log('[simplex] Using local relay at', relayUrl());
+    } catch {
+      await this.smp.connect(servers);
+      this.impl = this.smp;
+      console.log('[simplex] Using public SMP servers');
+    }
+  }
+
+  disconnect() { return this.impl.disconnect(); }
+  createQueue() { return (this.impl as WebSimplexClient).createQueue(); }
+  subscribeToQueue(a: SMPQueueAddress) { return (this.impl as WebSimplexClient).subscribeToQueue(a); }
+  sendMessage(a: SMPQueueAddress, m: Uint8Array) { return this.impl.sendMessage(a, m); }
+  acknowledgeMessage(a: SMPQueueAddress, id: Uint8Array) { return this.impl.acknowledgeMessage(a, id); }
+  createInvitation(d: string, k: Uint8Array) { return this.impl.createInvitation(d, k); }
+  acceptInvitation(inv: SMPInvitation) { return this.impl.acceptInvitation(inv); }
+  onMessage(cb: MessageCallback) { return this.impl.onMessage(cb); }
+  onStateChange(cb: StateCallback) { return this.impl.onStateChange(cb); }
+  getState() { return this.impl.getState(); }
+  setProxy(url: string | null) { return this.impl.setProxy(url); }
+}
+
 // Singleton instance
-export const simplexClient = new WebSimplexClient();
+export const simplexClient = new SmartSimplexClient();
