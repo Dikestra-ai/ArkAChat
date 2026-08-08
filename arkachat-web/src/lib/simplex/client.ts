@@ -37,9 +37,12 @@ export interface SMPMessage {
 
 /**
  * SMP Connection Invitation - for QR code pairing.
+ * connReqUri     = Queue A (inviter's receive queue, created + subscribed by inviter)
+ * replyConnReqUri = Queue B (pre-allocated by inviter, invitee subscribes to this)
  */
 export interface SMPInvitation {
   connReqUri: string;
+  replyConnReqUri?: string;   // Pre-allocated queue for invitee to receive on
   shieldKey: Uint8Array;
   displayName: string;
   timestamp: number;
@@ -105,12 +108,16 @@ export function decodeQueueUri(uri: string): SMPQueueAddress | null {
  * Encode invitation as JSON for QR code.
  */
 export function encodeInvitation(invitation: SMPInvitation): string {
-  return JSON.stringify({
+  const obj: Record<string, unknown> = {
     uri: invitation.connReqUri,
     k: toBase64Url(invitation.shieldKey),
     n: invitation.displayName,
     ts: invitation.timestamp,
-  });
+  };
+  if (invitation.replyConnReqUri) {
+    obj.ru = invitation.replyConnReqUri;
+  }
+  return JSON.stringify(obj);
 }
 
 /**
@@ -121,6 +128,7 @@ export function decodeInvitation(json: string): SMPInvitation | null {
     const data = JSON.parse(json);
     return {
       connReqUri: data.uri,
+      replyConnReqUri: data.ru as string | undefined,
       shieldKey: fromBase64Url(data.k),
       displayName: data.n,
       timestamp: data.ts,
@@ -657,7 +665,8 @@ export class LocalRelayClient {
 
   // ── Queue operations ─────────────────────────────────────────────────────
 
-  async createQueue(): Promise<SMPQueueAddress> {
+  /** Create a queue on the relay WITHOUT subscribing to it. */
+  private async createQueueOnly(): Promise<SMPQueueAddress> {
     const queueId = crypto.getRandomValues(new Uint8Array(24));
     const recipientKey = crypto.getRandomValues(new Uint8Array(32));
     const senderKey = crypto.getRandomValues(new Uint8Array(32));
@@ -666,13 +675,17 @@ export class LocalRelayClient {
 
     await this.rpc('NEW', { queueId: queueIdB64, recipientKey: recipientKeyB64 });
 
-    const address: SMPQueueAddress = {
+    return {
       server: 'local',
       queueId,
       recipientKey,
       senderKey,
     };
+  }
 
+  /** Create a queue on the relay AND subscribe to receive messages on it. */
+  async createQueue(): Promise<SMPQueueAddress> {
+    const address = await this.createQueueOnly();
     await this.subscribeToQueue(address);
     return address;
   }
@@ -695,25 +708,50 @@ export class LocalRelayClient {
     await this.rpc('ACK', { queueId, msgId: toBase64Url(msgId) });
   }
 
+  /**
+   * Create an invitation with two queues:
+   *   Queue A = inviter's receive queue (created + subscribed now)
+   *   Queue B = invitee's receive queue (pre-allocated, not yet subscribed)
+   */
   async createInvitation(displayName: string, shieldKey: Uint8Array): Promise<SMPInvitation> {
-    const queue = await this.createQueue();
+    // Queue A: inviter subscribes here — this is where Android sends TO
+    const queueA = await this.createQueue();
+    // Queue B: pre-allocated for invitee — Chrome will send TO here after pairing
+    const queueB = await this.createQueueOnly();
     return {
-      connReqUri: encodeQueueUri(queue),
+      connReqUri: encodeQueueUri(queueA),
+      replyConnReqUri: encodeQueueUri(queueB),
       shieldKey,
       displayName,
       timestamp: Date.now(),
     };
   }
 
+  /**
+   * Accept an invitation (invitee side):
+   *   - Do NOT subscribe to Queue A (that's the inviter's receive queue)
+   *   - Subscribe to Queue B (from replyConnReqUri) — this is the invitee's receive queue
+   *   - Returns Queue A address (where invitee should SEND messages to reach inviter)
+   *
+   * The caller is responsible for recording which queue to receive on (Queue B).
+   */
   async acceptInvitation(invitation: SMPInvitation): Promise<SMPQueueAddress> {
-    const queue = decodeQueueUri(invitation.connReqUri);
-    if (!queue) throw new Error('Invalid connection request URI');
-    // Subscribe so we receive replies on this queue's server
-    // For relay queues, the queue is already created on the relay — just subscribe
-    if (queue.server === 'local') {
-      await this.subscribeToQueue(queue);
+    const queueA = decodeQueueUri(invitation.connReqUri);
+    if (!queueA) throw new Error('Invalid connection request URI');
+
+    // Subscribe to Queue B (invitee's receive queue) if provided
+    if (invitation.replyConnReqUri) {
+      const queueB = decodeQueueUri(invitation.replyConnReqUri);
+      if (queueB && queueB.server === 'local') {
+        await this.subscribeToQueue(queueB);
+      }
+    } else if (queueA.server === 'local') {
+      // Legacy fallback: single-queue protocol — subscribe to Queue A
+      await this.subscribeToQueue(queueA);
     }
-    return queue;
+
+    // Return Queue A — this is where the invitee sends outbound messages
+    return queueA;
   }
 
   onMessage(callback: MessageCallback): () => void {

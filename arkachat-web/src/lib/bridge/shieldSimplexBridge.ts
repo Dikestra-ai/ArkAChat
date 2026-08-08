@@ -73,9 +73,12 @@ export interface MessageEnvelope {
 
 /**
  * Invitation data for QR code pairing.
+ * simplexUri    = Queue A URI (inviter's receive queue)
+ * replyUri      = Queue B URI (pre-allocated invitee receive queue)
  */
 export interface PairingInvitation {
   simplexUri: string;
+  replyUri?: string;   // Pre-allocated queue B URI (invitee's receive queue)
   shieldKey: Uint8Array;
   displayName: string;
   timestamp: number;
@@ -178,24 +181,60 @@ export class ShieldSimplexBridge {
 
   /**
    * Create an invitation for a new contact (generates QR code data).
+   *
+   * Creates two queues (two-queue protocol):
+   *   Queue A = inviter's receive queue (Chrome subscribes, Android sends here)
+   *   Queue B = invitee's receive queue (pre-allocated; Android subscribes, Chrome sends here)
+   *
+   * The inviter's contact is created immediately with:
+   *   simplexQueueUri  = Queue A  (messages from Android arrive here)
+   *   outboundQueueUri = Queue B  (Chrome sends TO here — Android's receive queue)
+   *   isInitiator      = true
    */
   async createInvitation(displayName: string): Promise<string> {
-    // Generate a temporary contact ID for the pending invitation
-    const tempContactId = `pending_${crypto.randomUUID()}`;
+    // Generate a permanent contact ID
+    const contactId = crypto.randomUUID();
 
     // Generate Shield shared key
-    const shieldKey = await this.crypto.generateSharedKey(tempContactId);
+    const shieldKey = await this.crypto.generateSharedKey(contactId);
 
-    // Create SimpleX invitation
+    // Create SimpleX invitation (creates Queue A + pre-allocates Queue B)
     const invitation = await this.simplex.createInvitation(displayName, shieldKey);
 
-    // Store pending invitation for later completion
-    this.pendingInvitations.set(tempContactId, {
+    // Store pending invitation for reference / future handshake completion
+    this.pendingInvitations.set(contactId, {
       simplexUri: invitation.connReqUri,
+      replyUri: invitation.replyConnReqUri,
       shieldKey,
       displayName,
       timestamp: Date.now(),
     });
+
+    // Create contact immediately (no handshake confirmation step in current protocol)
+    // Queue A URI = inviter's receive queue (messages from invitee arrive here)
+    // Queue B URI = invitee's receive queue (inviter sends TO here)
+    const queueAUri = invitation.connReqUri;
+    const queueBUri = invitation.replyConnReqUri;
+
+    const contact: Contact = {
+      id: contactId,
+      displayName,
+      simplexQueueUri: queueAUri,       // Queue A: inviter receives here
+      outboundQueueUri: queueBUri,      // Queue B: inviter sends TO here
+      isInitiator: true,
+      createdAt: Date.now(),
+      lastMessageAt: undefined,
+    };
+
+    useChatStore.getState().addContact(contact);
+
+    // Cache Queue A address as the inviter's receive queue
+    // (getQueueForContact will look up outboundQueueUri = Queue B for sending)
+    const queueAAddress = decodeQueueUri(queueAUri);
+    if (queueAAddress) {
+      // Don't cache the send queue here — getQueueForContact will decode outboundQueueUri
+      void queueAAddress; // Address is already subscribed inside createInvitation()
+    }
 
     return encodeInvitation(invitation);
   }
@@ -212,7 +251,15 @@ export class ShieldSimplexBridge {
   }
 
   /**
-   * Accept an invitation from a scanned QR code.
+   * Accept an invitation from a scanned QR code (invitee side).
+   *
+   * Two-queue protocol:
+   *   - Queue A = invitation.connReqUri     → inviter's receive queue (invitee SENDS here)
+   *   - Queue B = invitation.replyConnReqUri → invitee's receive queue (invitee SUBSCRIBES here)
+   *
+   * After this call, the invitee's contact is stored with:
+   *   simplexQueueUri  = Queue B URI (messages from inviter arrive here for invitee)
+   *   outboundQueueUri = Queue A URI (invitee sends messages TO here)
    */
   async acceptInvitation(qrData: string): Promise<Contact> {
     const invitation = decodeInvitation(qrData);
@@ -220,8 +267,10 @@ export class ShieldSimplexBridge {
       throw new Error('Invalid invitation QR code');
     }
 
-    // Accept SimpleX connection
-    const queue = await this.simplex.acceptInvitation(invitation);
+    // acceptInvitation() in LocalRelayClient will:
+    //   - Subscribe to Queue B (replyConnReqUri), which is the invitee's receive queue
+    //   - Return Queue A address (where invitee sends outbound messages)
+    const queueA = await this.simplex.acceptInvitation(invitation);
 
     // Generate contact ID
     const contactId = crypto.randomUUID();
@@ -229,11 +278,19 @@ export class ShieldSimplexBridge {
     // Import Shield key for E2E encryption
     await this.crypto.importSharedKey(contactId, invitation.shieldKey);
 
-    // Create contact
+    // Determine queue URIs for invitee:
+    //   simplexQueueUri  = Queue B (my receive queue, messages from inviter arrive here)
+    //   outboundQueueUri = Queue A (I send TO here — the inviter's receive queue)
+    const queueAUri = encodeQueueUri(queueA);
+    const queueBUri = invitation.replyConnReqUri;
+
     const contact: Contact = {
       id: contactId,
       displayName: invitation.displayName,
-      simplexQueueUri: encodeQueueUri(queue),
+      // Queue B is where invitee receives; fall back to Queue A if single-queue legacy
+      simplexQueueUri: queueBUri ?? queueAUri,
+      // Queue A is where invitee sends; only set when two-queue protocol is used
+      outboundQueueUri: queueBUri ? queueAUri : undefined,
       isInitiator: false,
       createdAt: Date.now(),
       lastMessageAt: undefined,
@@ -242,8 +299,8 @@ export class ShieldSimplexBridge {
     // Save contact to store
     useChatStore.getState().addContact(contact);
 
-    // Cache queue mapping
-    this.contactQueues.set(contactId, queue);
+    // Cache the OUTBOUND queue (Queue A) — this is where we SEND messages
+    this.contactQueues.set(contactId, queueA);
 
     return contact;
   }
@@ -788,8 +845,10 @@ export class ShieldSimplexBridge {
     const cached = this.contactQueues.get(contact.id);
     if (cached) return cached;
 
-    // Parse from stored URI
-    const queue = decodeQueueUri(contact.simplexQueueUri);
+    // Use outboundQueueUri (remote's receive queue) if available; otherwise fall back
+    // to simplexQueueUri for legacy single-queue contacts.
+    const uri = contact.outboundQueueUri ?? contact.simplexQueueUri;
+    const queue = decodeQueueUri(uri);
     if (!queue) {
       throw new Error(`Invalid queue URI for contact: ${contact.id}`);
     }

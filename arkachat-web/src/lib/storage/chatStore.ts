@@ -17,8 +17,9 @@ export interface Message {
 export interface Contact {
   id: string;
   displayName: string;
-  simplexQueueUri: string;   // SMP queue URI for messaging
-  isInitiator: boolean;      // Whether we initiated the connection
+  simplexQueueUri: string;    // My receive queue URI (messages from remote arrive here)
+  outboundQueueUri?: string;  // Remote receive queue URI (I send TO here)
+  isInitiator: boolean;       // Whether we initiated the connection
   createdAt: number;
   lastMessageAt?: number;
   avatarUrl?: string;
