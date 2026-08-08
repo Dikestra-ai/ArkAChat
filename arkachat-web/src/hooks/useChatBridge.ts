@@ -25,13 +25,8 @@ export function useChatBridge() {
         const bridge = getBridgeInstance();
         if (!bridge) return null;
 
-        try {
-            const message = await bridge.sendTextMessage(contactId, text);
-            return message;
-        } catch (error) {
-            console.error('Failed to send message:', error);
-            return null;
-        }
+        // Let errors propagate so callers can show failure state.
+        return bridge.sendTextMessage(contactId, text);
     }, []);
 
     /**

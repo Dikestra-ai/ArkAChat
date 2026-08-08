@@ -4,9 +4,11 @@ import { useState } from 'react';
 import { Shield, Plus, Settings, Search } from 'lucide-react';
 import { useChatStore, Contact } from '@/lib/storage/chatStore';
 import { NewContactModal } from './NewContactModal';
+import { SettingsModal } from './SettingsModal';
 
 export function ContactList() {
   const [showNewContact, setShowNewContact] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   const contacts = useChatStore((state) => state.contacts);
@@ -45,6 +47,7 @@ export function ContactList() {
               <Plus className="w-5 h-5" />
             </button>
             <button
+              onClick={() => setShowSettings(true)}
               className="p-2 rounded-full hover:bg-blue-700"
               title="Settings"
             >
@@ -96,6 +99,11 @@ export function ContactList() {
       {showNewContact && (
         <NewContactModal onClose={() => setShowNewContact(false)} />
       )}
+
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+      />
     </>
   );
 }

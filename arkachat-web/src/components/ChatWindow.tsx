@@ -34,8 +34,7 @@ export function ChatWindow({ contact }: ChatWindowProps) {
       await sendMessage(text);
     } catch (error) {
       console.error('Failed to send message:', error);
-      // Restore input on failure
-      setInputText(text);
+      // Message is already visible in UI with 'failed' status; don't restore input.
     } finally {
       setIsSending(false);
     }

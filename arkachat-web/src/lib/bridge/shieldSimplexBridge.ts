@@ -261,36 +261,42 @@ export class ShieldSimplexBridge {
     const messageId = crypto.randomUUID();
     const timestamp = Date.now();
 
-    const envelope: MessageEnvelope = {
-      type: MessageType.TEXT,
-      messageId,
-      timestamp,
-      content: text,
-    };
-
-    // Encrypt with Shield
-    const envelopeJson = JSON.stringify(envelope);
-    const encrypted = await this.crypto.encryptMessage(
-      contactId,
-      contact.isInitiator,
-      envelopeJson
-    );
-
-    // Send via SimpleX
-    const queue = await this.getQueueForContact(contact);
-    await this.simplex.sendMessage(queue, encrypted);
-
-    // Create and save message
+    // Save optimistically so the message appears immediately in the UI.
     const message: Message = {
       id: messageId,
       contactId,
       content: text,
       isOutgoing: true,
       timestamp,
-      status: 'sent' as MessageStatus,
+      status: 'sending' as MessageStatus,
     };
-
     useChatStore.getState().addMessage(message);
+
+    try {
+      const envelope: MessageEnvelope = {
+        type: MessageType.TEXT,
+        messageId,
+        timestamp,
+        content: text,
+      };
+
+      // Encrypt with Shield
+      const envelopeJson = JSON.stringify(envelope);
+      const encrypted = await this.crypto.encryptMessage(
+        contactId,
+        contact.isInitiator,
+        envelopeJson
+      );
+
+      // Send via SimpleX
+      const queue = await this.getQueueForContact(contact);
+      await this.simplex.sendMessage(queue, encrypted);
+
+      useChatStore.getState().updateMessageStatus(messageId, 'sent');
+    } catch (error) {
+      useChatStore.getState().updateMessageStatus(messageId, 'failed');
+      throw error;
+    }
 
     return message;
   }
