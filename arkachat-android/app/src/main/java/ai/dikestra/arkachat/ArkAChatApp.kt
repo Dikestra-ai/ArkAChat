@@ -1,6 +1,7 @@
 package ai.dikestra.arkachat
 
 import android.app.Application
+import android.util.Log
 import ai.dikestra.arkachat.bridge.ShieldSimplexBridge
 import ai.dikestra.arkachat.crypto.GroupKeyManager
 import ai.dikestra.arkachat.crypto.KeyManager
@@ -40,6 +41,13 @@ class ArkAChatApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            Log.e("CRASH", "━━━ UNCAUGHT EXCEPTION on thread ${thread.name} ━━━")
+            Log.e("CRASH", throwable.stackTraceToString())
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
 
         // Initialize components
         keyManager = KeyManager(this)

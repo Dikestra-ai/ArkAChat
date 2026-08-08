@@ -1,6 +1,7 @@
 package ai.dikestra.arkachat.ui
 
 import android.Manifest
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -20,7 +21,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -30,7 +30,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import ai.dikestra.arkachat.viewmodel.ContactsViewModel
+import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
+import com.google.zxing.DecodeHintType
 import com.google.zxing.MultiFormatReader
 import com.google.zxing.PlanarYUVLuminanceSource
 import com.google.zxing.common.HybridBinarizer
@@ -193,7 +195,14 @@ private fun CameraPreviewWithScanner(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
-    val reader = remember { MultiFormatReader() }
+    val reader = remember {
+        MultiFormatReader().apply {
+            setHints(mapOf(
+                DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),
+                DecodeHintType.TRY_HARDER to true
+            ))
+        }
+    }
 
     DisposableEffect(Unit) {
         onDispose { cameraExecutor.shutdown() }
@@ -245,30 +254,98 @@ private fun CameraPreviewWithScanner(
     )
 }
 
+private const val TAG = "QRScanner"
+private var frameCount = 0
+
+// PlanarYUVLuminanceSource.isRotateSupported = false, so ZXing bitmap rotation is a no-op.
+// We must rotate the raw Y-plane bytes manually before creating the source.
+private fun rotateYUV90CW(src: ByteArray, w: Int, h: Int): ByteArray {
+    // Output dimensions: newW=h, newH=w
+    val dst = ByteArray(src.size)
+    for (y in 0 until h) {
+        for (x in 0 until w) {
+            dst[x * h + (h - 1 - y)] = src[y * w + x]
+        }
+    }
+    return dst
+}
+
+private fun rotateYUV90CCW(src: ByteArray, w: Int, h: Int): ByteArray {
+    val dst = ByteArray(src.size)
+    for (y in 0 until h) {
+        for (x in 0 until w) {
+            dst[(w - 1 - x) * h + y] = src[y * w + x]
+        }
+    }
+    return dst
+}
+
+private fun rotateYUV180(src: ByteArray, w: Int, h: Int): ByteArray {
+    val dst = ByteArray(src.size)
+    val total = w * h
+    for (i in 0 until total) dst[i] = src[total - 1 - i]
+    return dst
+}
+
 private fun decodeQR(
     imageProxy: ImageProxy,
     reader: MultiFormatReader,
     onQRDetected: (String) -> Unit
 ) {
     try {
-        val buffer = imageProxy.planes[0].buffer
-        val bytes = ByteArray(buffer.remaining())
-        buffer.get(bytes)
+        val plane = imageProxy.planes[0]
+        val buffer = plane.buffer
+        val rowStride = plane.rowStride
+        val rawBytes = ByteArray(buffer.remaining())
+        buffer.get(rawBytes)
+
+        val rawW = imageProxy.width
+        val rawH = imageProxy.height
+        val rotation = imageProxy.imageInfo.rotationDegrees
+
+        if (frameCount++ % 30 == 0) {
+            Log.d(TAG, "frame: ${rawW}x${rawH} rot=${rotation}° rowStride=$rowStride bufLen=${rawBytes.size}")
+        }
+
+        // Compact row-padded buffer to tight rows before rotating
+        val bytes: ByteArray
+        val width: Int
+        val height: Int
+        if (rowStride == rawW) {
+            bytes = rawBytes
+            width = rawW
+            height = rawH
+        } else {
+            // Strip row padding so rotation math is correct
+            bytes = ByteArray(rawW * rawH)
+            for (row in 0 until rawH) {
+                rawBytes.copyInto(bytes, row * rawW, row * rowStride, row * rowStride + rawW)
+            }
+            width = rawW
+            height = rawH
+        }
+
+        // Rotate raw bytes so the QR code is upright before ZXing sees it
+        val (rotBytes, rotW, rotH) = when (rotation) {
+            90  -> Triple(rotateYUV90CW(bytes, width, height),  height, width)
+            180 -> Triple(rotateYUV180(bytes, width, height),   width,  height)
+            270 -> Triple(rotateYUV90CCW(bytes, width, height), height, width)
+            else -> Triple(bytes, width, height)
+        }
+
+        Log.d(TAG, "after rotate: ${rotW}x${rotH}")
 
         val source = PlanarYUVLuminanceSource(
-            bytes,
-            imageProxy.width,
-            imageProxy.height,
-            0, 0,
-            imageProxy.width,
-            imageProxy.height,
-            false
+            rotBytes, rotW, rotH, 0, 0, rotW, rotH, false
         )
         val bitmap = BinaryBitmap(HybridBinarizer(source))
         val result = reader.decodeWithState(bitmap)
+        Log.i(TAG, "DECODED: ${result.text}")
         onQRDetected(result.text)
-    } catch (_: Exception) {
-        // No QR code found in this frame — normal, keep scanning
+    } catch (e: com.google.zxing.NotFoundException) {
+        // Normal — no QR in this frame
+    } catch (e: Exception) {
+        Log.e(TAG, "decodeQR error: ${e.javaClass.simpleName}: ${e.message}")
     } finally {
         reader.reset()
         imageProxy.close()

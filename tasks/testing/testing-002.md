@@ -1,31 +1,32 @@
 ---
-id: deployment-003
-title: 'GitHub CI: Android/Web/Desktop/Erlang workflows + public repo'
-status: done
+id: testing-002
+title: 'Integration tests: Web (DOMGuard) + Android (Emulator)'
+status: doing
 priority: high
 tags:
-- deployment
+- testing
 dependencies:
-- setup-001
+- backend-003
+- backend-002
 assignee: developer
-created: 2026-08-07T20:57:45.462621605Z
-estimate: 2h
-complexity: 5
-area: deployment
+created: 2026-08-08T05:41:27.596217721Z
+estimate: 3h
+complexity: 8
+area: testing
 ---
 
-# GitHub CI: Android/Web/Desktop/Erlang workflows + public repo
+# Integration tests: Web (DOMGuard) + Android (Emulator)
 
 ## Causation Chain
-> Trace the deployment pipeline: source → build → artifact →
-environment config → runtime injection → health check. Verify actual
-env var usage and fallback defaults in config files.
+> Trace the test execution flow: fixture setup → precondition → action →
+assertion → teardown. Check actual test isolation - are tests
+independent or order-dependent?
 
 ## Pre-flight Checks
 - [ ] Read dependency task files for implementation context (Session Handoff)
-- [ ] `grep -r "env\|getenv\|std::env" src/` - Find env var usage
-- [ ] Check actual config file loading order
-- [ ] Verify health check endpoints exist
+- [ ] Read test files to verify actual assertions
+- [ ] Check test isolation (no shared mutable state)
+- [ ] Verify fixture setup and teardown completeness
 - [ ] `git log --oneline -10` - Check recent related commits
 
 ## Context

@@ -19,6 +19,8 @@ import ai.dikestra.arkachat.network.SMPInvitation
 import ai.dikestra.arkachat.network.SMPMessage
 import ai.dikestra.arkachat.network.SMPQueueAddress
 import ai.dikestra.arkachat.network.SimpleXClient
+import ai.dikestra.shield.QRExchange
+import ai.dikestra.shield.ShieldUtils
 import ai.dikestra.arkachat.storage.EncryptedFile
 import ai.dikestra.arkachat.storage.EncryptedFileStorage
 import ai.dikestra.arkachat.storage.FileMetadata
@@ -154,31 +156,37 @@ class ShieldSimplexBridge(
      * @return The new contact
      */
     suspend fun acceptInvitation(qrData: String): Contact {
-        val invitation = SMPInvitation.fromJson(qrData)
-            ?: throw IllegalArgumentException("Invalid invitation QR code")
+        // Use Shield's QRExchange for all key parsing — single source of truth
+        val (shieldKey, metadata) = try {
+            QRExchange.parseExchangeData(qrData)
+        } catch (e: Exception) {
+            throw IllegalArgumentException("Invalid QR code: ${e.message}", e)
+        }
 
-        // Accept SimpleX connection
-        val queue = simplexClient.acceptInvitation(invitation)
+        if (shieldKey.size != ShieldUtils.KEY_SIZE) {
+            throw IllegalArgumentException(
+                "Invalid key size: expected ${ShieldUtils.KEY_SIZE}, got ${shieldKey.size}"
+            )
+        }
 
-        // Import Shield key for E2E encryption
         val contactId = UUID.randomUUID().toString()
-        shieldCrypto.importSharedKey(contactId, invitation.shieldKey)
 
-        // Create contact
+        // Import key through Shield — stores shared_key + derives media_key
+        shieldCrypto.importSharedKey(contactId, shieldKey)
+
+        val displayName = (metadata?.get("name") as? String)?.takeIf { it.isNotBlank() }
+            ?: "Unknown"
+
+        // Web QR codes carry only a Shield key; SMP queue established later
         val contact = Contact(
             id = contactId,
-            displayName = invitation.displayName,
-            simplexQueueUri = queue.toUri(),
+            displayName = displayName,
+            simplexQueueUri = "",
             isInitiator = false,
             createdAt = System.currentTimeMillis()
         )
 
-        // Save contact
         contactDao.insert(contact)
-
-        // Store queue mapping
-        contactQueues[contactId] = queue
-
         return contact
     }
 

@@ -92,7 +92,7 @@ data class SMPMessage(
  * SMP Connection Invitation - for QR code pairing.
  */
 data class SMPInvitation(
-    val connReqUri: String,
+    val connReqUri: String,   // empty string = web-originated invitation (no SMP queue yet)
     val shieldKey: ByteArray,
     val displayName: String,
     val timestamp: Long
@@ -102,22 +102,43 @@ data class SMPInvitation(
     }
 
     companion object {
+        /**
+         * Parse QR invitation data.
+         *
+         * Supports two formats:
+         *   Android/legacy: {"uri":"...","k":"...","n":"...","ts":...}
+         *   Web (ArkAChat): {"v":1,"k":"...","m":{"name":"...","ts":...}}
+         */
         fun fromJson(json: String): SMPInvitation? {
             return try {
-                // Simple JSON parsing (use kotlinx.serialization in production)
-                val uriMatch = """"uri":"([^"]+)"""".toRegex().find(json)
                 val keyMatch = """"k":"([^"]+)"""".toRegex().find(json)
-                val nameMatch = """"n":"([^"]+)"""".toRegex().find(json)
-                val tsMatch = """"ts":(\d+)""".toRegex().find(json)
+                    ?: return null
 
-                if (uriMatch != null && keyMatch != null && nameMatch != null && tsMatch != null) {
+                // Web format: versioned envelope with nested metadata
+                val isWebFormat = """"v"\s*:\s*1""".toRegex().containsMatchIn(json)
+                if (isWebFormat) {
+                    val nameMatch = """"name"\s*:\s*"([^"]+)"""".toRegex().find(json)
+                    val tsMatch   = """"ts"\s*:\s*(\d+)""".toRegex().find(json)
                     SMPInvitation(
-                        connReqUri = uriMatch.groupValues[1],
-                        shieldKey = keyMatch.groupValues[1].fromBase64Url(),
-                        displayName = nameMatch.groupValues[1],
-                        timestamp = tsMatch.groupValues[1].toLong()
+                        connReqUri  = "",
+                        shieldKey   = keyMatch.groupValues[1].fromBase64Url(),
+                        displayName = nameMatch?.groupValues?.get(1) ?: "Unknown",
+                        timestamp   = tsMatch?.groupValues?.get(1)?.toLong() ?: 0L
                     )
-                } else null
+                } else {
+                    // Legacy Android format
+                    val uriMatch  = """"uri":"([^"]+)"""".toRegex().find(json)
+                    val nameMatch = """"n":"([^"]+)"""".toRegex().find(json)
+                    val tsMatch   = """"ts":(\d+)""".toRegex().find(json)
+                    if (uriMatch != null && nameMatch != null && tsMatch != null) {
+                        SMPInvitation(
+                            connReqUri  = uriMatch.groupValues[1],
+                            shieldKey   = keyMatch.groupValues[1].fromBase64Url(),
+                            displayName = nameMatch.groupValues[1],
+                            timestamp   = tsMatch.groupValues[1].toLong()
+                        )
+                    } else null
+                }
             } catch (_: Exception) {
                 null
             }
