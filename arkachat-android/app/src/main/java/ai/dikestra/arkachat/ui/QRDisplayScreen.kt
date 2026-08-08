@@ -36,12 +36,15 @@ fun QRDisplayScreen(
     val scope = rememberCoroutineScope()
 
     val invitationQR by viewModel.invitationQR.collectAsState()
+    val invitationError by viewModel.invitationError.collectAsState()
 
     // Generate QR on first load
     LaunchedEffect(Unit) {
         isGenerating = true
         val qrData = viewModel.createInvitation("ArkAChat User")
-        qrBitmap = generateQRBitmap(qrData)
+        if (qrData != null) {
+            qrBitmap = generateQRBitmap(qrData)
+        }
         isGenerating = false
     }
 
@@ -113,6 +116,40 @@ fun QRDisplayScreen(
                         isGenerating -> {
                             CircularProgressIndicator()
                         }
+                        invitationError != null -> {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "Failed to generate QR",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = invitationError ?: "",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Button(
+                                    onClick = {
+                                        scope.launch {
+                                            isGenerating = true
+                                            expiresIn = 300
+                                            val qrData = viewModel.createInvitation("ArkAChat User")
+                                            if (qrData != null) {
+                                                qrBitmap = generateQRBitmap(qrData)
+                                            }
+                                            isGenerating = false
+                                        }
+                                    }
+                                ) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Retry")
+                                }
+                            }
+                        }
                         expiresIn <= 0 -> {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
@@ -127,7 +164,9 @@ fun QRDisplayScreen(
                                             isGenerating = true
                                             expiresIn = 300
                                             val qrData = viewModel.createInvitation("ArkAChat User")
-                                            qrBitmap = generateQRBitmap(qrData)
+                                            if (qrData != null) {
+                                                qrBitmap = generateQRBitmap(qrData)
+                                            }
                                             isGenerating = false
                                         }
                                     }

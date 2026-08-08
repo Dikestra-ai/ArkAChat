@@ -10,6 +10,7 @@ import ai.dikestra.arkachat.model.Group
 import ai.dikestra.arkachat.model.GroupMember
 import ai.dikestra.arkachat.model.MemberRole
 import ai.dikestra.arkachat.model.Message
+import java.io.File
 import ai.dikestra.arkachat.network.ConnectionState
 import ai.dikestra.arkachat.storage.ChatDatabase
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -65,6 +66,21 @@ class GroupViewModel(
                 bridge.sendGroupMessage(groupId, text)
             } catch (e: Exception) {
                 _error.value = "Failed to send message"
+                e.printStackTrace()
+            } finally {
+                _isSending.value = false
+            }
+        }
+    }
+
+    fun sendFile(file: File) {
+        if (_isSending.value) return
+        viewModelScope.launch {
+            _isSending.value = true
+            try {
+                bridge.sendGroupFile(groupId, file)
+            } catch (e: Exception) {
+                _error.value = "Failed to send file"
                 e.printStackTrace()
             } finally {
                 _isSending.value = false

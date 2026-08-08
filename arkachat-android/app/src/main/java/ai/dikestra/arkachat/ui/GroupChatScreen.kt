@@ -1,5 +1,7 @@
 package ai.dikestra.arkachat.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -28,6 +31,7 @@ import ai.dikestra.arkachat.model.Message
 import ai.dikestra.arkachat.model.MessageStatus
 import ai.dikestra.arkachat.network.ConnectionState
 import ai.dikestra.arkachat.viewmodel.GroupViewModel
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -47,6 +51,19 @@ fun GroupChatScreen(
 
     var messageText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+    val context = LocalContext.current
+
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        val contentResolver = context.contentResolver
+        val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
+        val ext = mimeType.substringAfterLast('/').replace("+xml", "").take(8)
+        val tmp = File(context.cacheDir, "attach_${System.currentTimeMillis()}.$ext")
+        contentResolver.openInputStream(uri)?.use { input ->
+            tmp.outputStream().use { output -> input.copyTo(output) }
+        }
+        viewModel.sendFile(tmp)
+    }
 
     // Scroll to bottom when new messages arrive
     LaunchedEffect(messages.size) {
@@ -130,7 +147,10 @@ fun GroupChatScreen(
                         .padding(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { /* TODO: Attachment picker */ }) {
+                    IconButton(
+                        onClick = { filePicker.launch("*/*") },
+                        enabled = !isSending
+                    ) {
                         Icon(
                             Icons.Default.AttachFile,
                             contentDescription = "Attach",

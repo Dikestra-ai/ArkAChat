@@ -136,17 +136,9 @@ class ShieldSimplexBridge(
      * @return JSON string for QR code
      */
     suspend fun createInvitation(displayName: String): String {
-        // Generate Shield shared key for E2E encryption
         val tempContactId = "pending_${UUID.randomUUID()}"
-        val shieldKey = shieldCrypto.generateSharedKey(tempContactId)
-
-        // Create SimpleX invitation
-        val invitation = simplexClient.createInvitation(displayName, shieldKey)
-
-        // Store pending invitation
-        // In production, persist this to handle app restarts
-
-        return invitation.toJson()
+        // Shield QR generation is offline — no SMP server required
+        return shieldCrypto.generateQRInvitation(tempContactId, displayName)
     }
 
     /**
@@ -746,6 +738,71 @@ class ShieldSimplexBridge(
         messageDao.insert(message)
 
         // Update group's last message time
+        groupDao.updateLastMessageAt(groupId, timestamp)
+
+        return message
+    }
+
+    suspend fun sendGroupFile(groupId: String, file: File): Message {
+        requireNotNull(groupDao) { "GroupDao required for group messaging" }
+        requireNotNull(groupKeyManager) { "GroupKeyManager required for group messaging" }
+
+        val group = groupDao.getGroupById(groupId)
+            ?: throw IllegalStateException("Group not found: $groupId")
+
+        val fileMetadata = FileMetadata(
+            originalName = file.name,
+            mimeType = guessMimeType(file.name),
+            originalSize = file.length()
+        )
+        val encryptedFile = fileStorage.saveEncrypted(groupId, file, fileMetadata)
+
+        val messageId = UUID.randomUUID().toString()
+        val timestamp = System.currentTimeMillis()
+
+        val envelope = GroupMessageEnvelope(
+            type = GroupMessageType.FILE,
+            groupId = groupId,
+            senderId = "",
+            messageId = messageId,
+            timestamp = timestamp,
+            keyId = group.currentKeyId,
+            fileId = encryptedFile.id
+        )
+
+        val envelopeJson = json.encodeToString(envelope)
+        val encrypted = groupKeyManager.encryptGroupMessage(groupId, envelopeJson.toByteArray())
+
+        val members = groupDao.getMembers(groupId)
+        for (member in members) {
+            if (member.contactId.isEmpty()) continue
+            val contact = contactDao.getById(member.contactId) ?: continue
+
+            val pairwiseEnvelope = MessageEnvelope(
+                type = MessageType.TEXT,
+                messageId = messageId,
+                timestamp = timestamp,
+                content = "GROUP:$groupId:${group.currentKeyId}:${android.util.Base64.encodeToString(encrypted, android.util.Base64.NO_WRAP)}"
+            )
+
+            val pairwiseJson = json.encodeToString(pairwiseEnvelope)
+            val pairwiseEncrypted = shieldCrypto.encryptMessage(member.contactId, contact.isInitiator, pairwiseJson)
+            val queue = getQueueForContact(contact)
+            simplexClient.sendMessage(queue, pairwiseEncrypted)
+        }
+
+        val message = Message(
+            id = messageId,
+            contactId = "",
+            groupId = groupId,
+            senderContactId = null,
+            content = "[File: ${fileMetadata.originalName}]",
+            fileId = encryptedFile.id,
+            isOutgoing = true,
+            timestamp = timestamp,
+            status = MessageStatus.SENT
+        )
+        messageDao.insert(message)
         groupDao.updateLastMessageAt(groupId, timestamp)
 
         return message

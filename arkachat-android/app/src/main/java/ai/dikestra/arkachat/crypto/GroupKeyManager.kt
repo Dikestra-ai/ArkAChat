@@ -84,8 +84,8 @@ class GroupKeyManager(
             rotationNumber = group.keyRotationCount + 1
         )
 
-        // Clean up old keys (keep last N for decryption)
-        val keepAfter = group.keyRotationCount + 1 - MAX_OLD_KEYS_TO_KEEP
+        // Delete keys older than the last MAX_OLD_KEYS_TO_KEEP rotations
+        val keepAfter = group.keyRotationCount + 2 - MAX_OLD_KEYS_TO_KEEP
         if (keepAfter > 0) {
             groupDao.deleteOldKeys(group.id, keepAfter)
         }
@@ -98,9 +98,8 @@ class GroupKeyManager(
      * The member will receive this via their individual SimpleX queue.
      */
     fun encryptKeyForMember(groupKey: ByteArray, contactId: String, isInitiator: Boolean): ByteArray {
-        return shieldCrypto.encryptMessage(contactId, isInitiator,
-            android.util.Base64.encodeToString(groupKey, android.util.Base64.NO_WRAP))
-            .let { it } // Returns encrypted bytes
+        val base64Key = java.util.Base64.getEncoder().encodeToString(groupKey)
+        return shieldCrypto.encryptMessage(contactId, isInitiator, base64Key)
     }
 
     /**
@@ -108,7 +107,7 @@ class GroupKeyManager(
      */
     fun decryptKeyFromMember(encryptedKey: ByteArray, contactId: String, isInitiator: Boolean): ByteArray {
         val base64Key = shieldCrypto.decryptMessage(contactId, isInitiator, encryptedKey)
-        return android.util.Base64.decode(base64Key, android.util.Base64.NO_WRAP)
+        return java.util.Base64.getDecoder().decode(base64Key)
     }
 
     /**

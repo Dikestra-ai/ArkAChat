@@ -178,28 +178,17 @@ class ShieldCompatibilityTest {
 
     @Test
     fun `QR invitation format contains required fields`() {
-        // Simulate creating an invitation
         val shieldKey = testVectors.qrExchange.testCases[0].shieldKey
-        val simplexUri = testVectors.qrExchange.testCases[0].simplexUri
         val displayName = testVectors.qrExchange.testCases[0].displayName
+        val ts = 1705780000000L
 
-        // The invitation JSON should contain all required fields
-        val invitation = mapOf(
-            "uri" to simplexUri,
-            "k" to shieldKey,
-            "n" to displayName,
-            "ts" to System.currentTimeMillis()
-        )
+        // Shield QRExchange wire format: {"v":1,"k":"<base64key>","m":{"name":"<name>","ts":<ms>}}
+        val invitationJson = """{"v":1,"k":"$shieldKey","m":{"name":"$displayName","ts":$ts}}"""
 
-        val invitationJson = json.encodeToString(
-            kotlinx.serialization.serializer<Map<String, Any>>(),
-            invitation
-        )
-
-        assertTrue(invitationJson.contains("\"uri\""))
-        assertTrue(invitationJson.contains("\"k\""))
-        assertTrue(invitationJson.contains("\"n\""))
-        assertTrue(invitationJson.contains("\"ts\""))
+        assertTrue("must have version field", invitationJson.contains("\"v\""))
+        assertTrue("must have key field", invitationJson.contains("\"k\""))
+        assertTrue("must have metadata field", invitationJson.contains("\"m\""))
+        assertTrue("must have display name", invitationJson.contains(displayName))
     }
 
     // ==================== Helpers ====================

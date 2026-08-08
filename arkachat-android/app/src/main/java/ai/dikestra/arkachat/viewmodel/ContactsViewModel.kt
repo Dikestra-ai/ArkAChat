@@ -35,12 +35,21 @@ class ContactsViewModel(
     private val _invitationQR = MutableStateFlow<String?>(null)
     val invitationQR: StateFlow<String?> = _invitationQR
 
+    private val _invitationError = MutableStateFlow<String?>(null)
+    val invitationError: StateFlow<String?> = _invitationError
+
     val connectionState = bridge.connectionState
 
-    suspend fun createInvitation(displayName: String): String {
-        val qrData = bridge.createInvitation(displayName)
-        _invitationQR.value = qrData
-        return qrData
+    suspend fun createInvitation(displayName: String): String? {
+        _invitationError.value = null
+        return try {
+            val qrData = bridge.createInvitation(displayName)
+            _invitationQR.value = qrData
+            qrData
+        } catch (e: Exception) {
+            _invitationError.value = e.message ?: "Failed to generate QR code"
+            null
+        }
     }
 
     suspend fun acceptInvitation(qrData: String): Result<Contact> {
