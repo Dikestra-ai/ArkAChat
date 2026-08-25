@@ -5,8 +5,14 @@ import { X, UserPlus, QrCode, Scan, Loader2, CheckCircle, AlertCircle } from 'lu
 import { useChatBridge } from '@/hooks/useChatBridge';
 import { QRGenerator } from './QRGenerator';
 import { QRScanner } from './QRScanner';
+import { decodeInvitation } from '@/lib/simplex/client';
 
-type ModalMode = 'choose' | 'generate' | 'scan';
+type ModalMode = 'choose' | 'generate' | 'scan' | 'confirm';
+
+interface PendingInvitation {
+  qrData: string;
+  displayName: string;
+}
 
 interface AddContactModalProps {
   isOpen: boolean;
@@ -18,6 +24,7 @@ export function AddContactModal({ isOpen, onClose, onContactAdded }: AddContactM
   const [mode, setMode] = useState<ModalMode>('choose');
   const [displayName, setDisplayName] = useState('');
   const [invitation, setInvitation] = useState<string | null>(null);
+  const [pendingInvitation, setPendingInvitation] = useState<PendingInvitation | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -28,6 +35,7 @@ export function AddContactModal({ isOpen, onClose, onContactAdded }: AddContactM
     setMode('choose');
     setDisplayName('');
     setInvitation(null);
+    setPendingInvitation(null);
     setError(null);
     setSuccess(null);
     setIsLoading(false);
@@ -77,12 +85,35 @@ export function AddContactModal({ isOpen, onClose, onContactAdded }: AddContactM
     }
   };
 
-  const handleScan = async (qrData: string) => {
+  // Scanning/pasting a QR no longer auto-connects (security review web-app
+  // finding #4): the invitation is decoded and shown to the user, who must
+  // explicitly confirm before any key is imported or queue subscribed. The
+  // displayName inside the QR is attacker-controlled, so it is rendered as
+  // plain text alongside a warning until confirmed.
+  const handleScan = (qrData: string) => {
+    setError(null);
+
+    const decoded = decodeInvitation(qrData);
+    if (!decoded || !decoded.connReqUri || !decoded.shieldKey) {
+      setError('Invalid QR code');
+      return;
+    }
+
+    setPendingInvitation({
+      qrData,
+      displayName: decoded.displayName || 'Unknown',
+    });
+    setMode('confirm');
+  };
+
+  const handleConfirmConnect = async () => {
+    if (!pendingInvitation) return;
+
     setIsLoading(true);
     setError(null);
 
     try {
-      const contact = await acceptInvitation(qrData);
+      const contact = await acceptInvitation(pendingInvitation.qrData);
       if (contact) {
         setSuccess(`Added ${contact.displayName} as contact!`);
         onContactAdded?.(contact.id);
@@ -98,7 +129,14 @@ export function AddContactModal({ isOpen, onClose, onContactAdded }: AddContactM
       setError(err instanceof Error ? err.message : 'Invalid QR code');
     } finally {
       setIsLoading(false);
+      setPendingInvitation(null);
     }
+  };
+
+  const handleCancelConnect = () => {
+    setPendingInvitation(null);
+    setError(null);
+    setMode('scan');
   };
 
   return (
@@ -226,6 +264,48 @@ export function AddContactModal({ isOpen, onClose, onContactAdded }: AddContactM
                 onScan={handleScan}
                 onError={(err) => setError(err)}
               />
+            </div>
+          )}
+
+          {/* Mode: Confirm scanned invitation before connecting */}
+          {mode === 'confirm' && pendingInvitation && !success && (
+            <div className="space-y-4" data-testid="confirm-invitation">
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <p className="text-sm text-amber-800">
+                  You are about to connect to a new contact. The name below was
+                  provided by whoever created this QR code — verify it with the
+                  person directly before connecting.
+                </p>
+              </div>
+
+              <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
+                <p className="text-xs text-gray-500 mb-1">Contact name from QR code</p>
+                <p
+                  className="text-lg font-semibold text-gray-900 break-all"
+                  data-testid="confirm-invitation-name"
+                >
+                  {pendingInvitation.displayName}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onClick={handleCancelConnect}
+                  disabled={isLoading}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition disabled:opacity-50"
+                  data-testid="cancel-connect-button"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmConnect}
+                  disabled={isLoading}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                  data-testid="confirm-connect-button"
+                >
+                  Connect
+                </button>
+              </div>
             </div>
           )}
         </div>

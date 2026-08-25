@@ -6,6 +6,7 @@
  */
 
 import { pad, unpad } from '../crypto/messagePadding';
+import { encryptAtRest, decryptAtRest } from '../storage/atRestCrypto';
 import init, {
   WasmRatchetSession,
   randomBytes as wasmRandomBytes,
@@ -45,20 +46,6 @@ async function ensureInit(): Promise<void> {
   if (!wasmInitialized) {
     await initShield();
   }
-}
-
-/**
- * Concatenate Uint8Arrays
- */
-function concat(...arrays: Uint8Array[]): Uint8Array {
-  const totalLength = arrays.reduce((sum, arr) => sum + arr.length, 0);
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const arr of arrays) {
-    result.set(arr, offset);
-    offset += arr.length;
-  }
-  return result;
 }
 
 /**
@@ -288,6 +275,36 @@ export const Shield = {
 };
 
 /**
+ * Label for deterministic media-key derivation. Mirrors the Android fix
+ * (`MEDIA_KEY_LABEL = "media_key_derivation_v1_pad_32b"` in ShieldCrypto.kt):
+ * both the inviter and the invitee derive media_key = HMAC-SHA256(sharedKey,
+ * label), so the two peers always hold the same media key (security review
+ * web-crypto finding #5 — previously the inviter stored a random key while
+ * the invitee derived one, so file transfers could never decrypt).
+ */
+const MEDIA_KEY_LABEL = 'media_key_derivation_v1_pad_32b';
+
+/** IndexedDB record shapes for the `keys` / `sessions` stores. */
+interface StoredKeyRecord {
+  id: string;
+  /** At-rest-encrypted key bytes (current format). */
+  wrapped?: number[];
+  /** Legacy cleartext key bytes (pre at-rest encryption); migrated on read. */
+  key?: number[];
+}
+
+interface StoredSessionRecord {
+  id: string;
+  /** At-rest-encrypted root key (current format). */
+  wrappedRootKey?: number[];
+  /** Legacy cleartext root key (pre at-rest encryption). */
+  rootKey?: number[];
+  isInitiator: boolean;
+  sendCounter?: number;
+  recvCounter?: number;
+}
+
+/**
  * Web Shield Crypto - High-level API for ArkAChat web client.
  */
 export class WebShieldCrypto {
@@ -348,12 +365,23 @@ export class WebShieldCrypto {
   }
 
   /**
+   * Deterministically derive the per-contact media key from the shared key.
+   * Both sides of the pairing MUST use this exact derivation so encrypted
+   * file transfers are decryptable by either peer.
+   */
+  private async deriveMediaKey(sharedKey: Uint8Array): Promise<Uint8Array> {
+    return Shield.hmac(sharedKey, new TextEncoder().encode(MEDIA_KEY_LABEL));
+  }
+
+  /**
    * Generate a new shared key for a contact.
    */
   async generateSharedKey(contactId: string): Promise<Uint8Array> {
     await ensureInit();
     const sharedKey = await Shield.randomBytes(Shield.KEY_SIZE);
-    const mediaKey = await Shield.randomBytes(Shield.KEY_SIZE);
+    // Derive (never randomize) the media key so the invitee, who only
+    // receives sharedKey via the QR exchange, ends up with the same one.
+    const mediaKey = await this.deriveMediaKey(sharedKey);
 
     await this.storeKey(`shared_key_${contactId}`, sharedKey);
     await this.storeKey(`media_key_${contactId}`, mediaKey);
@@ -369,9 +397,8 @@ export class WebShieldCrypto {
       throw new Error('Invalid key size');
     }
 
-    // Derive media key from shared key
-    const mediaKeyData = concat(sharedKey, new TextEncoder().encode('media'));
-    const mediaKey = await Shield.sha256(mediaKeyData);
+    // Same deterministic derivation as generateSharedKey (inviter side).
+    const mediaKey = await this.deriveMediaKey(sharedKey);
 
     await this.storeKey(`shared_key_${contactId}`, sharedKey);
     await this.storeKey(`media_key_${contactId}`, mediaKey);
@@ -417,13 +444,27 @@ export class WebShieldCrypto {
     return QRExchange.parseExchangeData(qrData);
   }
 
-  // Key storage using IndexedDB
+  /**
+   * Read a stored key (e.g. `media_key_<contactId>`) through the at-rest
+   * encryption layer. Used by the encrypted file storage, which must not
+   * read the raw IndexedDB records directly (they are wrapped, and the DB
+   * version is owned by this module).
+   */
+  async getStoredKey(keyId: string): Promise<Uint8Array | null> {
+    return this.getKey(keyId);
+  }
+
+  // Key storage using IndexedDB.
+  // Key material is wrapped with AES-GCM under a non-extractable device key
+  // (see storage/atRestCrypto.ts) before it is written — raw key bytes never
+  // touch storage (security review web-crypto finding #1).
   private async storeKey(keyId: string, key: Uint8Array): Promise<void> {
+    const wrapped = await encryptAtRest(key);
     const db = await this.openKeyStore();
     return new Promise((resolve, reject) => {
       const tx = db.transaction('keys', 'readwrite');
       const store = tx.objectStore('keys');
-      const request = store.put({ id: keyId, key: Array.from(key) });
+      const request = store.put({ id: keyId, wrapped: Array.from(wrapped) });
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
     });
@@ -431,16 +472,26 @@ export class WebShieldCrypto {
 
   private async getKey(keyId: string): Promise<Uint8Array | null> {
     const db = await this.openKeyStore();
-    return new Promise((resolve, reject) => {
+    const record = await new Promise<StoredKeyRecord | undefined>((resolve, reject) => {
       const tx = db.transaction('keys', 'readonly');
       const store = tx.objectStore('keys');
       const request = store.get(keyId);
-      request.onsuccess = () => {
-        const record = request.result;
-        resolve(record ? new Uint8Array(record.key) : null);
-      };
+      request.onsuccess = () => resolve(request.result as StoredKeyRecord | undefined);
       request.onerror = () => reject(request.error);
     });
+
+    if (!record) return null;
+    if (record.wrapped) {
+      return decryptAtRest(new Uint8Array(record.wrapped));
+    }
+    if (record.key) {
+      // Legacy cleartext record from before at-rest encryption:
+      // migrate it to the wrapped format, then return it.
+      const key = new Uint8Array(record.key);
+      await this.storeKey(keyId, key);
+      return key;
+    }
+    return null;
   }
 
   private async deleteKey(keyId: string): Promise<void> {
@@ -458,13 +509,15 @@ export class WebShieldCrypto {
     const existing = this.sessions.get(contactId);
     if (!existing) return;
 
+    // Wrap the ratchet root key before persisting (never store it raw).
+    const wrappedRootKey = await encryptAtRest(existing.rootKey);
     const db = await this.openKeyStore();
     return new Promise((resolve, reject) => {
       const tx = db.transaction('sessions', 'readwrite');
       const store = tx.objectStore('sessions');
       const request = store.put({
         id: contactId,
-        rootKey: Array.from(existing.rootKey),
+        wrappedRootKey: Array.from(wrappedRootKey),
         isInitiator: existing.isInitiator,
         sendCounter: existing.session.sendCounter,
         recvCounter: existing.session.recvCounter,
@@ -481,12 +534,21 @@ export class WebShieldCrypto {
       const store = tx.objectStore('sessions');
       const request = store.get(contactId);
       request.onsuccess = async () => {
-        const record = request.result;
+        const record = request.result as StoredSessionRecord | undefined;
         if (!record) {
           resolve(null);
         } else {
           try {
-            const rootKey = new Uint8Array(record.rootKey);
+            // Current records carry an at-rest-wrapped root key; legacy
+            // records (pre at-rest encryption) carry it in cleartext and are
+            // rewritten in the wrapped format on the next saveSession().
+            const rootKey = record.wrappedRootKey
+              ? await decryptAtRest(new Uint8Array(record.wrappedRootKey))
+              : new Uint8Array(record.rootKey ?? []);
+            if (rootKey.length === 0) {
+              resolve(null);
+              return;
+            }
             const session = await RatchetSession.fromState({
               rootKey,
               isInitiator: record.isInitiator,

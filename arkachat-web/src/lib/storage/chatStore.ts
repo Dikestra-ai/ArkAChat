@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { createEncryptedStorage } from './atRestCrypto';
 
 export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 
@@ -192,6 +193,10 @@ export const useChatStore = create<ChatState>()(
     }),
     {
       name: 'arkachat-storage',
+      // Persisted blob (message plaintext + contact graph) is AES-GCM
+      // encrypted under a non-extractable device key before it reaches
+      // localStorage (security review web-app #2 / web-crypto #1).
+      storage: createEncryptedStorage(),
       partialize: (state) => ({
         contacts: state.contacts,
         messages: state.messages,

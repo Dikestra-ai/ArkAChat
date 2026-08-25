@@ -18,6 +18,13 @@ kill_wait(Pid) ->
     after 2000 -> ok
     end.
 
+%% shield_bridge fails closed without a configured master key, so give the
+%% test run a throwaway random one via the application env.
+set_test_key() ->
+    TestKeyHex = binary_to_list(
+                     binary:encode_hex(crypto:strong_rand_bytes(32))),
+    application:set_env(arkachat, shield_key_hex, TestKeyHex).
+
 %% ── bot_echo (pure function tests, no process needed) ────────────────────────
 
 bot_echo_test_() ->
@@ -38,11 +45,13 @@ bot_status_test_() ->
     [
         ?_assertMatch("Status Bot" ++ _,
             bot_status:handle("bot-status", "user", "/help")),
-        ?_assertMatch("Node: " ++ _,
+        %% /status and /nodes deliberately no longer disclose node names
+        %% (they identify the Erlang distribution endpoint).
+        ?_assertMatch("Memory: " ++ _,
             bot_status:handle("bot-status", "user", "/status")),
         ?_assertMatch("Uptime: " ++ _,
             bot_status:handle("bot-status", "user", "/uptime")),
-        ?_assertMatch("Nodes: " ++ _,
+        ?_assertMatch("Connected nodes: " ++ _,
             bot_status:handle("bot-status", "user", "/nodes")),
         ?_assertMatch("Unknown command" ++ _,
             bot_status:handle("bot-status", "user", "/nope"))
@@ -54,6 +63,7 @@ bot_genserver_test_() ->
     {setup,
      fun() ->
          application:ensure_all_started(crypto),
+         set_test_key(),
          {ok, BridgePid} = shield_bridge:start_link(),
          {ok, BotPid}    = bot:start_link("test-echo", bot_echo),
          {BridgePid, BotPid}
@@ -61,6 +71,7 @@ bot_genserver_test_() ->
      fun({BridgePid, BotPid}) ->
          unlink(BotPid),    kill_wait(BotPid),
          unlink(BridgePid), kill_wait(BridgePid),
+         application:unset_env(arkachat, shield_key_hex),
          catch ets:delete(arkachat_msgs),
          catch ets:delete(arkachat_contacts),
          catch ets:delete(arkachat_groups),
@@ -93,6 +104,7 @@ bot_sup_test_() ->
     {setup,
      fun() ->
          application:ensure_all_started(crypto),
+         set_test_key(),
          {ok, BridgePid} = shield_bridge:start_link(),
          {ok, SupPid}    = bot_sup:start_link(),
          {BridgePid, SupPid}
@@ -100,6 +112,7 @@ bot_sup_test_() ->
      fun({BridgePid, SupPid}) ->
          unlink(SupPid),    kill_wait(SupPid),
          unlink(BridgePid), kill_wait(BridgePid),
+         application:unset_env(arkachat, shield_key_hex),
          catch ets:delete(arkachat_msgs),
          catch ets:delete(arkachat_contacts),
          catch ets:delete(arkachat_groups),

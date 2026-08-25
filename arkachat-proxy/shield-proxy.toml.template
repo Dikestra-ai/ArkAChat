@@ -1,0 +1,90 @@
+# ArkAChat Shield Proxy Configuration — PRIMARY (active) node
+# Routes SimpleX WebSocket traffic through Shield transport encryption
+#
+# TEMPLATE: rendered at container start by entrypoint.sh (envsubst). The
+# dollar-brace placeholders below are substituted from the environment
+# (compose env_file). The shield-proxy binary does NOT expand environment
+# variables itself, so this file must NEVER be passed to the binary directly —
+# the entrypoint fails closed if any placeholder survives rendering.
+# (Comments here must not contain literal dollar-brace sequences: the
+# entrypoint greps the rendered file for them and aborts if any remain.)
+
+[proxy]
+# Public client entrypoint — intentionally bound to all interfaces.
+bind_address = "0.0.0.0:8443"
+max_connections = 10000
+shutdown_timeout_secs = 30
+
+# [dns] — REMOVED (security review F3/F4).
+# The previous config ran a UDP DNS forwarder on 0.0.0.0:5353, published to the
+# host (open resolver / DNS-amplification abuse), with plaintext upstreams
+# 8.8.8.8/1.1.1.1 (SimpleX relay lookups leaked to Google/Cloudflare and any
+# on-path observer). The shield-proxy binary supports neither DoT nor DoH
+# (verified against shield-proxy/src/dns.rs — plain UDP forwarding only), so
+# encrypted upstream DNS cannot be configured in-binary. If a client-facing
+# forwarder is ever required, re-enable this section bound to loopback or an
+# internal network and point upstreams ONLY at a private encrypted resolver
+# (e.g. a local unbound/dnscrypt-proxy sidecar) — never third-party plaintext
+# port-53 resolvers:
+#
+# [dns]
+# bind_address = "127.0.0.1:5353"
+# timeout_ms = 2000
+# health_check_interval_secs = 10
+#
+# [[dns.upstreams]]
+# address = "<private-encrypted-resolver>:53"
+# priority = 1
+
+[[upstream]]
+name = "smp4-simplex"
+address = "smp4.simplex.im:5223"
+protocol = "tcp"
+shield_encrypt = true
+shield_key = "${SHIELD_PROXY_KEY_SMP4}"
+
+[[upstream]]
+name = "smp5-simplex"
+address = "smp5.simplex.im:5223"
+protocol = "tcp"
+shield_encrypt = true
+shield_key = "${SHIELD_PROXY_KEY_SMP5}"
+
+[[upstream]]
+name = "smp6-simplex"
+address = "smp6.simplex.im:5223"
+protocol = "tcp"
+shield_encrypt = true
+shield_key = "${SHIELD_PROXY_KEY_SMP6}"
+
+[shield]
+password = "${SHIELD_PROXY_PASSWORD}"
+service = "arkachat-proxy"
+# Reduced from 60s (F9): smallest window that still tolerates realistic client
+# clock skew; shrinks the whole-session replay window.
+replay_ttl_secs = 15
+
+[redundancy]
+# F5: the primary must participate in heartbeats so the standby can tell
+# "primary alive" from "primary dead" — otherwise the standby self-promotes
+# while the primary still serves traffic (split-brain).
+enabled = true
+# Heartbeat endpoint — internal compose network only, never published to host.
+bind_address = "0.0.0.0:8444"
+peer_address = "shield-proxy-standby:8444"
+heartbeat_interval_ms = 500
+failover_timeout_ms = 3000
+# HMAC-authenticates heartbeats; MUST be identical on active and standby.
+psk = "${SHIELD_PROXY_REDUNDANCY_PSK}"
+
+[metrics]
+enabled = true
+# F2: loopback only — the Prometheus endpoint is unauthenticated and leaks
+# operational/traffic data. Scrape from inside the container network namespace
+# (e.g. a sidecar sharing network_mode) or front with an authenticated proxy.
+bind_address = "127.0.0.1:9090"
+path = "/metrics"
+
+[logging]
+level = "info"
+format = "text"

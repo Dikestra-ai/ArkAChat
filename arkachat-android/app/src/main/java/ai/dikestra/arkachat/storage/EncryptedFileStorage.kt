@@ -60,6 +60,15 @@ class EncryptedFileStorage(
         private const val VERSION: Byte = 0x01
         private const val HEADER_SIZE = 8 + 1 + 4  // magic + version + metadata_length
 
+        // Encrypted metadata is a small JSON blob wrapped by Shield AEAD.
+        // Reject anything implausibly large before allocating (the length
+        // field is attacker-influenced on imported/received files).
+        private const val MAX_METADATA_SIZE = 64 * 1024
+
+        // Shield v4 AEAD wire minimum: version(1)+suite(1)+nonce(12)+tag(16)
+        // plus inner header/padding — anything shorter cannot be valid.
+        private const val MIN_METADATA_SIZE = 2 + 12 + 16
+
         private val json = Json { ignoreUnknownKeys = true }
     }
 
@@ -264,6 +273,22 @@ class EncryptedFileStorage(
         require(encryptedData.sliceArray(0 until 8).contentEquals(MAGIC_HEADER)) {
             "Invalid encrypted file: bad magic header"
         }
+        require(encryptedData[8] == VERSION) {
+            "Invalid encrypted file: unsupported version"
+        }
+
+        // Reject implausible metadata lengths up front (attacker-supplied
+        // field; would otherwise cause OOM/negative-size on first read).
+        val declaredMetadataLength = littleEndianToInt(
+            encryptedData.sliceArray(9 until HEADER_SIZE)
+        )
+        require(
+            declaredMetadataLength >= MIN_METADATA_SIZE &&
+                declaredMetadataLength <= MAX_METADATA_SIZE &&
+                declaredMetadataLength <= encryptedData.size - HEADER_SIZE
+        ) {
+            "Invalid encrypted file: bad metadata length"
+        }
 
         val outputFile = File(storageDir, "$fileId.enc")
         outputFile.writeBytes(encryptedData)
@@ -314,10 +339,24 @@ class EncryptedFileStorage(
         val mediaKey = keyManager.retrieveKey("media_key_$contactId")
             ?: throw IllegalStateException("No media key for contact: $contactId")
 
-        // Derive file key using Shield encryption (encrypt fileId, take first 32 bytes as derived key)
-        val encrypted = Shield.quickEncrypt(mediaKey, fileId.toByteArray(Charsets.UTF_8))
-        // Skip nonce(16), take next 32 bytes of encrypted data as derived key
-        return encrypted.copyOfRange(16, 48)
+        // Deterministic per-file KDF: fileKey = HMAC-SHA256(mediaKey, fileId).
+        // MUST stay in sync with arkachat-web (encryptedFileStorage.ts
+        // deriveFileKey) so encrypted files transfer across platforms.
+        // Never derive keys from Shield.quickEncrypt output: it is randomized
+        // (fresh nonce/padding/timestamp) and non-reproducible.
+        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+        mac.init(javax.crypto.spec.SecretKeySpec(mediaKey, "HmacSHA256"))
+        return mac.doFinal(fileId.toByteArray(Charsets.UTF_8)) // 32 bytes
+    }
+
+    /** Read exactly buffer.size bytes or fail (InputStream.read may return short). */
+    private fun readFully(input: InputStream, buffer: ByteArray) {
+        var offset = 0
+        while (offset < buffer.size) {
+            val read = input.read(buffer, offset, buffer.size - offset)
+            require(read > 0) { "Unexpected end of encrypted file" }
+            offset += read
+        }
     }
 
     private fun readHeader(
@@ -328,7 +367,7 @@ class EncryptedFileStorage(
         FileInputStream(file).use { fis ->
             // Read magic header
             val magic = ByteArray(8)
-            fis.read(magic)
+            readFully(fis, magic)
             require(magic.contentEquals(MAGIC_HEADER)) { "Invalid file: bad magic header" }
 
             // Read version
@@ -337,12 +376,22 @@ class EncryptedFileStorage(
 
             // Read metadata length
             val lengthBytes = ByteArray(4)
-            fis.read(lengthBytes)
+            readFully(fis, lengthBytes)
             val metadataLength = littleEndianToInt(lengthBytes)
+
+            // Bound the attacker-influenced length before allocating:
+            // must be plausible AEAD output and must fit inside the file.
+            val maxForFile = minOf(
+                MAX_METADATA_SIZE.toLong(),
+                file.length() - HEADER_SIZE
+            )
+            require(metadataLength >= MIN_METADATA_SIZE && metadataLength <= maxForFile) {
+                "Invalid metadata length: $metadataLength"
+            }
 
             // Read encrypted metadata
             val encryptedMetadata = ByteArray(metadataLength)
-            fis.read(encryptedMetadata)
+            readFully(fis, encryptedMetadata)
 
             // Decrypt metadata
             val fileKey = deriveFileKey(contactId, fileId)

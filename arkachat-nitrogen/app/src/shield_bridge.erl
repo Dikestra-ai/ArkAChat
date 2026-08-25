@@ -15,10 +15,12 @@
 %%   padLen ∈ [32, 128]  (uniform)
 %%   GCM tag (16 bytes) is appended by the AEAD — total overhead ≥ 59 bytes.
 %%
-%% Config (no hardcoding):
+%% Config (no hardcoding, FAIL CLOSED):
 %%   $ARKACHAT_SHIELD_KEY  — 64-char hex string (256-bit master key)
 %%   {arkachat, shield_key_hex}  — fallback in app.config
-%%   Otherwise a per-node key is derived (dev only, not cross-platform).
+%%   If neither is set the server refuses to start. There is deliberately no
+%%   derived/default key: a key derived from public values (node name etc.)
+%%   would void message confidentiality.
 %%
 -module(shield_bridge).
 -behaviour(gen_server).
@@ -30,7 +32,7 @@
          get_groups/0,   add_group/2,
          group_members/1, add_group_member/2]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3]).
+         terminate/2, code_change/3, format_status/2]).
 
 %% Shield wire-format constants (must match Shield.kt exactly)
 -define(VERSION_KEY,   16#13).
@@ -50,7 +52,10 @@
 -define(T_GROUPS,   arkachat_groups).
 -define(T_MEMBERS,  arkachat_members).
 
--record(state, {key :: binary()}).
+%% The master key is wrapped in a zero-arity fun so that crash reports,
+%% `sys:get_status/1` output and error_logger state dumps show an opaque
+%% `#Fun<...>` instead of the raw key bytes. See also format_status/2.
+-record(state, {key :: fun(() -> binary()) | redacted}).
 
 %% ── Public API ────────────────────────────────────────────────────────────────
 
@@ -91,14 +96,17 @@ add_group_member(GroupId, ContactId) ->
 
 init([]) ->
     Key = load_key(),
-    ets:new(?T_MSGS,     [named_table, public, bag]),
-    ets:new(?T_CONTACTS, [named_table, public, set]),
-    ets:new(?T_GROUPS,   [named_table, public, set]),
-    ets:new(?T_MEMBERS,  [named_table, public, bag]),
+    KeyFun = fun() -> Key end,
+    %% Tables are protected: readable by other processes for diagnostics but
+    %% writable only by this gen_server, which is the sole intended accessor.
+    ets:new(?T_MSGS,     [named_table, protected, bag]),
+    ets:new(?T_CONTACTS, [named_table, protected, set]),
+    ets:new(?T_GROUPS,   [named_table, protected, set]),
+    ets:new(?T_MEMBERS,  [named_table, protected, bag]),
     %% Seed built-in bot contacts so the UI is non-empty on first run
     ets:insert(?T_CONTACTS, {"bot-echo",   "Echo Bot",   bot}),
     ets:insert(?T_CONTACTS, {"bot-status", "Status Bot", bot}),
-    {ok, #state{key = Key}}.
+    {ok, #state{key = KeyFun}}.
 
 handle_call({encrypt, MasterKey, Plaintext}, _From, S) ->
     {reply, shield_encrypt(MasterKey, Plaintext), S};
@@ -106,19 +114,18 @@ handle_call({encrypt, MasterKey, Plaintext}, _From, S) ->
 handle_call({decrypt, MasterKey, Blob}, _From, S) ->
     {reply, shield_decrypt(MasterKey, Blob), S};
 
-handle_call({store_msg, ConvId, Sender, Text}, _From, #state{key = K} = S) ->
-    Blob = shield_encrypt(K, unicode:characters_to_binary(Text)),
+handle_call({store_msg, ConvId, Sender, Text}, _From, #state{key = KF} = S) ->
+    Blob = shield_encrypt(KF(), unicode:characters_to_binary(Text)),
     Ts   = erlang:system_time(millisecond),
     ets:insert(?T_MSGS, {ConvId, Ts, Sender, Blob}),
     {reply, ok, S};
 
-handle_call({get_msgs, ConvId}, _From, #state{key = K} = S) ->
+handle_call({get_msgs, ConvId}, _From, #state{key = KF} = S) ->
     Rows = lists:sort(ets:lookup(?T_MSGS, ConvId)),
-    Msgs = [ begin
-                 Plain = shield_decrypt(K, Blob),
-                 #{ts => Ts, sender => Sender,
-                   text => unicode:characters_to_list(Plain)}
-             end || {_, Ts, Sender, Blob} <- Rows ],
+    Key  = KF(),
+    Msgs = [ #{ts => Ts, sender => Sender,
+               text => decode_text(Key, Blob)}
+             || {_, Ts, Sender, Blob} <- Rows ],
     {reply, Msgs, S};
 
 handle_call(get_contacts, _From, S) ->
@@ -155,6 +162,11 @@ handle_info(_Msg, S) -> {noreply, S}.
 terminate(_Reason, _S) -> ok.
 code_change(_Vsn, S, _Extra) -> {ok, S}.
 
+%% Redact the key from sys:get_status/1 output and from the "State" section
+%% of SASL/error_logger crash reports.
+format_status(_Opt, [_PDict, State]) ->
+    [{data, [{"State", State#state{key = redacted}}]}].
+
 %% ── Shield wire format ────────────────────────────────────────────────────────
 %%
 %% These two functions implement Shield v2.x quickEncrypt / quickDecrypt in
@@ -189,6 +201,20 @@ shield_decrypt(MasterKey, <<?VERSION_KEY, ?SUITE_AES_GCM,
     end;
 shield_decrypt(_Key, _Bad) -> error.
 
+%% Decrypt a stored blob for display.  Never crashes on an undecryptable or
+%% non-UTF-8 row (key rotation, corruption, tampering): renders a placeholder
+%% instead, so one bad row cannot crash-loop the store.
+decode_text(Key, Blob) ->
+    case shield_decrypt(Key, Blob) of
+        error ->
+            "[undecryptable message]";
+        Plain ->
+            case unicode:characters_to_list(Plain) of
+                L when is_list(L) -> L;
+                _                 -> "[undecryptable message]"
+            end
+    end.
+
 %% ── Shield inner-layout helpers ───────────────────────────────────────────────
 
 build_inner(TsMs, PadLen, Padding, Plaintext) ->
@@ -218,27 +244,50 @@ derive_aead_key(MasterKey) ->
     Info = <<?HKDF_INFO/binary, 1>>,
     crypto:mac(hmac, sha256, MasterKey, Info).
 
-%% ── Key loading — never hardcoded ────────────────────────────────────────────
-
+%% ── Key loading — never hardcoded, never derived, FAIL CLOSED ────────────────
+%%
+%% A real 256-bit key must be provided via $ARKACHAT_SHIELD_KEY or the
+%% {arkachat, shield_key_hex} application env. If neither is present we
+%% refuse to start rather than fall back to a predictable key: any key
+%% derivable from public values (node name, hostname, a constant string)
+%% can be recomputed offline by an attacker, voiding all stored ciphertext.
 load_key() ->
     case os:getenv("ARKACHAT_SHIELD_KEY") of
         false ->
             case application:get_env(arkachat, shield_key_hex) of
-                {ok, Hex} -> hex_to_bin(Hex);
-                undefined  -> derive_dev_key()
+                {ok, Hex} ->
+                    hex_to_bin(Hex);
+                undefined ->
+                    error_logger:error_msg(
+                        "shield_bridge: no Shield master key configured. "
+                        "Set ARKACHAT_SHIELD_KEY (64 hex chars) or "
+                        "{arkachat, shield_key_hex} in app.config. "
+                        "Refusing to start.~n"),
+                    error(missing_shield_key)
             end;
         Hex ->
             hex_to_bin(Hex)
     end.
 
-%% Dev-only: derive a per-node key. NOT cross-platform compatible.
-%% In production always set $ARKACHAT_SHIELD_KEY.
-derive_dev_key() ->
-    NodeBin = atom_to_binary(node(), utf8),
-    crypto:hash(sha256, <<"arkachat-dev-v1", NodeBin/binary>>).
-
+%% Strict parse of a 64-char hex string into a 32-byte key.  Wrong length or
+%% non-hex characters are fatal — a silently truncated key must never be used.
 hex_to_bin(Hex) when is_list(Hex) ->
     hex_to_bin(list_to_binary(Hex));
-hex_to_bin(Hex) ->
-    << <<(binary_to_integer(<<A,B>>, 16))>>
-       || <<A,B>> <= Hex >>.
+hex_to_bin(Hex) when is_binary(Hex), byte_size(Hex) =:= 64 ->
+    case is_hex(Hex) of
+        true ->
+            << <<(binary_to_integer(<<A,B>>, 16))>>
+               || <<A,B>> <= Hex >>;
+        false ->
+            error({invalid_shield_key, non_hex_characters})
+    end;
+hex_to_bin(_Other) ->
+    error({invalid_shield_key, wrong_length_expected_64_hex_chars}).
+
+is_hex(<<>>) -> true;
+is_hex(<<C, Rest/binary>>)
+  when (C >= $0 andalso C =< $9);
+       (C >= $a andalso C =< $f);
+       (C >= $A andalso C =< $F) ->
+    is_hex(Rest);
+is_hex(_) -> false.

@@ -28,6 +28,27 @@ import { randomBytes } from 'crypto';
 
 const PORT = parseInt(process.env.RELAY_PORT || '3004', 10);
 
+// Bind to loopback only (security review web-app finding #3). The Android
+// emulator still reaches the relay: 10.0.2.2 maps to the host's loopback
+// interface, and physical devices use `adb reverse tcp:3004 tcp:3004`
+// (see the dev:android script), which also terminates on host loopback.
+// Set RELAY_HOST explicitly only if you understand the exposure.
+const HOST = process.env.RELAY_HOST || '127.0.0.1';
+
+// WebSocket Origin allowlist (anti cross-site WebSocket hijacking): browsers
+// always send an Origin header, so any page not on this list is rejected.
+// Connections WITHOUT an Origin header (native/non-browser clients such as
+// the Android app's OkHttp socket) are allowed — they are not subject to
+// drive-by hijacking from web pages.
+const DEFAULT_ALLOWED_ORIGINS = [
+  'http://localhost:3003',
+  'http://127.0.0.1:3003',
+  'http://10.0.2.2:3003',
+];
+const ALLOWED_ORIGINS = process.env.RELAY_ALLOWED_ORIGINS
+  ? process.env.RELAY_ALLOWED_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)
+  : DEFAULT_ALLOWED_ORIGINS;
+
 // Queue state: queueId → { recipientKey, subscriber: WebSocket|null, pending: Message[] }
 const queues = new Map();
 
@@ -44,7 +65,15 @@ const server = createServer((req, res) => {
   res.end();
 });
 
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({
+  server,
+  verifyClient: ({ origin }) => {
+    if (!origin) return true; // native (non-browser) clients send no Origin
+    if (ALLOWED_ORIGINS.includes(origin)) return true;
+    console.warn(`[relay] Rejected WebSocket connection from disallowed origin: ${origin}`);
+    return false;
+  },
+});
 
 wss.on('connection', (ws, req) => {
   const clientAddr = req.socket.remoteAddress;
@@ -147,8 +176,10 @@ function send(ws, obj) {
   }
 }
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`[relay] ArkAChat local relay listening on ws://0.0.0.0:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`[relay] ArkAChat local relay listening on ws://${HOST}:${PORT}`);
   console.log(`[relay] Browser → ws://localhost:${PORT}`);
-  console.log(`[relay] Android  → ws://10.0.2.2:${PORT}`);
+  console.log(`[relay] Android emulator → ws://10.0.2.2:${PORT} (host loopback alias)`);
+  console.log(`[relay] Android device   → adb reverse tcp:${PORT} tcp:${PORT}`);
+  console.log(`[relay] Allowed origins: ${ALLOWED_ORIGINS.join(', ')} (+ originless native clients)`);
 });

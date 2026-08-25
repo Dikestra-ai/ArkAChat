@@ -13,8 +13,10 @@ async function initKeystore() {
     console.log('Keystore initialized with OS keychain');
     return true;
   } catch (error) {
-    console.error('Failed to initialize keytar:', error);
-    // Fallback to in-memory storage for development
+    console.error('Failed to initialize keytar:', error.message);
+    // Fallback to in-memory storage. Callers MUST check the `false` return
+    // value and surface this degraded mode (see index.js) instead of silently
+    // running without OS-keychain-backed key storage.
     keytar = createFallbackKeystore();
     return false;
   }
@@ -42,7 +44,7 @@ async function storeKey(keyId, key) {
     await keytar.setPassword(SERVICE_NAME, keyId, keyString);
     return true;
   } catch (error) {
-    console.error('Failed to store key:', error);
+    console.error('Failed to store key:', error.message); // never log key material
     return false;
   }
 }
@@ -56,7 +58,7 @@ async function retrieveKey(keyId) {
     const buffer = Buffer.from(keyString, 'base64');
     return new Uint8Array(buffer);
   } catch (error) {
-    console.error('Failed to retrieve key:', error);
+    console.error('Failed to retrieve key:', error.message); // never log key material
     return null;
   }
 }
@@ -66,7 +68,7 @@ async function deleteKey(keyId) {
     await keytar.deletePassword(SERVICE_NAME, keyId);
     return true;
   } catch (error) {
-    console.error('Failed to delete key:', error);
+    console.error('Failed to delete key:', error.message);
     return false;
   }
 }

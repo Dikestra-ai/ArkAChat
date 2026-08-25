@@ -1,6 +1,25 @@
 ## Erlang VM args for ArkAChat
--name arkachat@127.0.0.1
--setcookie arkachat_secret
+##
+## SECURITY: Erlang distribution is DISABLED by default (no -name / -sname).
+## Distribution is remote-code-execution by design: anyone who can reach the
+## distribution port with the cluster cookie owns the node. For that reason a
+## cookie must NEVER be committed to this file.
+##
+## To enable clustering at deploy time:
+##   1. Uncomment the -name line below (or pass it via the release start
+##      script).
+##   2. Do NOT add -setcookie here. Provision the cookie out-of-band: write a
+##      strong random value from your secret manager to ~/.erlang.cookie with
+##      mode 0400 before first start. If the file is absent, Erlang generates
+##      a random cookie itself; either way it never lives in the repo.
+##   3. Keep the loopback binding below and firewall EPMD (tcp/4369) and the
+##      distribution port range; prefer TLS distribution for multi-host.
+##
+## -name arkachat@127.0.0.1
+
+## Defense in depth: if distribution is ever enabled, bind the distribution
+## listener to loopback only.
+-kernel inet_dist_use_interface {127,0,0,1}
 +K true
 +A 16
 -env ERL_MAX_PORTS 65536

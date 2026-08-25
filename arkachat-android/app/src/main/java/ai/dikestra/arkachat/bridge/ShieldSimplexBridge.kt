@@ -89,11 +89,45 @@ class ShieldSimplexBridge(
     private val groupDao: GroupDao? = null,
     private val groupKeyManager: GroupKeyManager? = null
 ) {
+    companion object {
+        private const val TAG = "ShieldSimplexBridge"
+
+        // Freshness window for group envelopes. The timestamp lives inside the
+        // group-key AEAD, so a replaying attacker cannot forge it. Window is
+        // generous because SMP servers store-and-forward for offline peers.
+        private const val GROUP_MESSAGE_MAX_AGE_MS = 7L * 24 * 60 * 60 * 1000 // 7 days
+        private const val GROUP_MESSAGE_MAX_CLOCK_SKEW_MS = 5L * 60 * 1000    // 5 minutes
+
+        // Per-group bound on the in-memory seen-messageId replay cache.
+        private const val SEEN_GROUP_MESSAGE_IDS_MAX = 512
+    }
+
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val json = Json { ignoreUnknownKeys = true }
 
     // Contact queue mappings
     private val contactQueues = mutableMapOf<String, SMPQueueAddress>()
+
+    // Per-group replay guard: message ids already processed this session.
+    // TEXT/FILE additionally get durable dedup via the messages table.
+    private val seenGroupMessageIds = mutableMapOf<String, LinkedHashSet<String>>()
+
+    /**
+     * Returns true if this (groupId, messageId) was already seen; otherwise
+     * records it. Cache is bounded FIFO per group.
+     */
+    private fun isReplayedGroupMessage(groupId: String, messageId: String): Boolean {
+        synchronized(seenGroupMessageIds) {
+            val seen = seenGroupMessageIds.getOrPut(groupId) { LinkedHashSet() }
+            if (!seen.add(messageId)) return true
+            if (seen.size > SEEN_GROUP_MESSAGE_IDS_MAX) {
+                val oldest = seen.iterator()
+                oldest.next()
+                oldest.remove()
+            }
+            return false
+        }
+    }
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState
@@ -1165,11 +1199,91 @@ class ShieldSimplexBridge(
             // Parse the group message envelope
             val envelope = json.decodeFromString<GroupMessageEnvelope>(envelopeJson)
 
+            // ── Envelope consistency ─────────────────────────────────────
+            // The outer (unauthenticated) routing prefix must agree with the
+            // authenticated envelope contents.
+            if (envelope.groupId != groupId) {
+                android.util.Log.w(TAG, "Rejected group message ${envelope.messageId}: groupId mismatch")
+                return
+            }
+
+            // ── Sender authorization ─────────────────────────────────────
+            // The only authenticated sender identity is the pairwise channel
+            // (contact.id). envelope.senderId is sender-chosen: senders write
+            // "" for self, so require it to be empty or to match the
+            // authenticated pairwise identity — never trust it on its own.
+            if (envelope.senderId.isNotEmpty() && envelope.senderId != contact.id) {
+                android.util.Log.w(
+                    TAG,
+                    "Rejected group message ${envelope.messageId}: senderId does not match pairwise sender"
+                )
+                return
+            }
+
+            // The pairwise sender must be a current member of the group.
+            val senderMember = groupDao.getMember(groupId, contact.id)
+            if (senderMember == null) {
+                android.util.Log.w(
+                    TAG,
+                    "Rejected group message ${envelope.messageId}: sender ${contact.id} is not a member of $groupId"
+                )
+                return
+            }
+
+            // Control actions that mutate membership/roles/metadata require
+            // the *sender* to be an admin (mirrors the send-side isAdmin()
+            // checks, which previously had no receive-side counterpart).
+            val adminOnly = envelope.type == GroupMessageType.MEMBER_ADDED ||
+                envelope.type == GroupMessageType.MEMBER_REMOVED ||
+                envelope.type == GroupMessageType.ADMIN_CHANGE ||
+                envelope.type == GroupMessageType.GROUP_INFO_UPDATE
+            if (adminOnly && senderMember.role != MemberRole.ADMIN) {
+                android.util.Log.w(
+                    TAG,
+                    "Rejected ${envelope.type} ${envelope.messageId}: sender ${contact.id} is not an admin of $groupId"
+                )
+                return
+            }
+
+            // ── Freshness ────────────────────────────────────────────────
+            // envelope.timestamp is inside the group-key AEAD, so replays
+            // cannot alter it. Reject stale or far-future envelopes.
+            val now = System.currentTimeMillis()
+            if (envelope.timestamp > now + GROUP_MESSAGE_MAX_CLOCK_SKEW_MS ||
+                now - envelope.timestamp > GROUP_MESSAGE_MAX_AGE_MS
+            ) {
+                android.util.Log.w(
+                    TAG,
+                    "Rejected group message ${envelope.messageId}: outside freshness window"
+                )
+                return
+            }
+
+            // ── Replay guard ─────────────────────────────────────────────
+            // Bounded per-group seen-id cache (all types), plus durable dedup
+            // against the messages table for content messages.
+            if (isReplayedGroupMessage(groupId, envelope.messageId)) {
+                android.util.Log.w(
+                    TAG,
+                    "Rejected group message ${envelope.messageId}: replayed message id"
+                )
+                return
+            }
+            if ((envelope.type == GroupMessageType.TEXT || envelope.type == GroupMessageType.FILE) &&
+                messageDao.getById(envelope.messageId) != null
+            ) {
+                android.util.Log.w(
+                    TAG,
+                    "Rejected group message ${envelope.messageId}: already stored"
+                )
+                return
+            }
+
             // Handle based on message type
             when (envelope.type) {
                 GroupMessageType.TEXT -> handleGroupTextMessage(contact, group, envelope)
                 GroupMessageType.FILE -> handleGroupFileMessage(contact, group, envelope)
-                GroupMessageType.MEMBER_ADDED -> handleMemberAdded(group, envelope)
+                GroupMessageType.MEMBER_ADDED -> handleMemberAdded(contact, group, envelope)
                 GroupMessageType.MEMBER_REMOVED -> handleMemberRemoved(group, envelope)
                 GroupMessageType.KEY_ROTATION -> { /* Already handled via GROUP_KEY: prefix */ }
                 GroupMessageType.GROUP_INFO_UPDATE -> handleGroupInfoUpdate(group, envelope)
@@ -1225,7 +1339,7 @@ class ShieldSimplexBridge(
         messageDao.insert(message)
     }
 
-    private suspend fun handleMemberAdded(group: Group, envelope: GroupMessageEnvelope) {
+    private suspend fun handleMemberAdded(sender: Contact, group: Group, envelope: GroupMessageEnvelope) {
         val memberId = envelope.metadata?.get("memberId") ?: return
 
         // Check if member already exists
@@ -1241,7 +1355,9 @@ class ShieldSimplexBridge(
             displayName = displayName,
             role = MemberRole.MEMBER,
             joinedAt = envelope.timestamp,
-            addedBy = envelope.senderId
+            // Record the authenticated pairwise sender, not the
+            // sender-chosen envelope.senderId field.
+            addedBy = sender.id
         )
 
         groupDao.insertMember(member)

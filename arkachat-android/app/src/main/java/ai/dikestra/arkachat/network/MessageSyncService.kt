@@ -10,6 +10,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import ai.dikestra.arkachat.ArkAChatApp
 import ai.dikestra.arkachat.R
+import ai.dikestra.arkachat.storage.EncryptedPrefs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -20,6 +21,8 @@ import kotlinx.coroutines.launch
 class MessageSyncService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private val encryptedPrefs by lazy { EncryptedPrefs(this) }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -122,13 +125,34 @@ class MessageSyncService : Service() {
             notificationManager.createNotificationChannel(channel)
         }
 
-        val notification = NotificationCompat.Builder(this, MESSAGE_CHANNEL_ID)
-            .setContentTitle(senderName)
-            .setContentText(message)
+        // Honor the user's "show preview" setting (SettingsScreen defaults it
+        // to true). When previews are off, show no sender or content at all.
+        val showPreview = encryptedPrefs.getBoolean(EncryptedPrefs.KEY_SHOW_PREVIEW, true)
+
+        // Redacted version shown when previews are disabled, and on the lock
+        // screen (VISIBILITY_PRIVATE) even when previews are enabled.
+        val publicNotification = NotificationCompat.Builder(this, MESSAGE_CHANNEL_ID)
+            .setContentTitle("ArkAChat")
+            .setContentText("New message")
             .setSmallIcon(android.R.drawable.ic_dialog_email)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
+
+        val notification = if (showPreview) {
+            NotificationCompat.Builder(this, MESSAGE_CHANNEL_ID)
+                .setContentTitle(senderName)
+                .setContentText(message)
+                .setSmallIcon(android.R.drawable.ic_dialog_email)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                .setPublicVersion(publicNotification)
+                .build()
+        } else {
+            publicNotification
+        }
 
         notificationManager.notify(System.currentTimeMillis().toInt(), notification)
     }

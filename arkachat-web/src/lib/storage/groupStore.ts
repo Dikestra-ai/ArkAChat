@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Message, MessageStatus } from './chatStore';
+import { createEncryptedStorage } from './atRestCrypto';
 
 export type MemberRole = 'admin' | 'member';
 
@@ -256,6 +257,10 @@ export const useGroupStore = create<GroupState>()(
     }),
     {
       name: 'arkachat-groups',
+      // Persisted blob (group message plaintext, membership and wrapped
+      // group keys) is AES-GCM encrypted under a non-extractable device key
+      // before it reaches localStorage (security review web-crypto #1).
+      storage: createEncryptedStorage(),
       partialize: (state) => ({
         groups: state.groups,
         members: state.members,

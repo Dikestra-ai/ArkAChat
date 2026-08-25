@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, session, shell, dialog } = require('electron');
 const path = require('path');
 const { initKeystore, storeKey, retrieveKey, deleteKey } = require('./keystore');
 const { setupUpdater } = require('./updater');
@@ -7,6 +7,84 @@ let mainWindow = null;
 let tray = null;
 
 const isDev = !app.isPackaged;
+
+// Origins the renderer is allowed to open network connections to.
+// Keep this list minimal: the SimpleX SMP transport servers the app uses.
+const ALLOWED_CONNECT_ORIGINS = [
+  'https://smp4.simplex.im',
+  'wss://smp4.simplex.im',
+  'https://smp5.simplex.im',
+  'wss://smp5.simplex.im',
+  'https://smp6.simplex.im',
+  'wss://smp6.simplex.im',
+];
+
+// Origin the top frame is pinned to (dev server in dev, packaged file: origin in prod).
+const DEV_ORIGIN = 'http://localhost:3000';
+const RENDERER_DIR = path.join(__dirname, '../renderer');
+
+/**
+ * Strict Content-Security-Policy for the renderer.
+ *
+ * - script-src: 'self' only (plus 'wasm-unsafe-eval' for the app's WASM crypto);
+ *   no 'unsafe-inline' / 'unsafe-eval', so injected markup cannot execute script.
+ * - connect-src: 'self' + the allow-listed SMP origins, so even if script were
+ *   injected it could not exfiltrate keystore material to an attacker host.
+ * - object-src 'none', base-uri 'none', form-action 'none', frame-ancestors 'none'.
+ * - style-src allows 'unsafe-inline' because the static web export uses inline
+ *   styles; this does not permit script execution.
+ */
+function buildCsp() {
+  const connectSrc = ["'self'", ...ALLOWED_CONNECT_ORIGINS];
+  if (isDev) {
+    // Dev server + HMR websocket only.
+    connectSrc.push(DEV_ORIGIN, 'ws://localhost:3000');
+  }
+  return [
+    "default-src 'self'",
+    "script-src 'self' 'wasm-unsafe-eval'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "font-src 'self' data:",
+    `connect-src ${connectSrc.join(' ')}`,
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-ancestors 'none'",
+  ].join('; ');
+}
+
+function installCsp() {
+  const csp = buildCsp();
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [csp],
+      },
+    });
+  });
+}
+
+/** True if `url` is inside the app's own origin (packaged renderer or dev server). */
+function isAppUrl(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (isDev && parsed.origin === DEV_ORIGIN) {
+    return true;
+  }
+  if (parsed.protocol === 'file:') {
+    // Only files inside the packaged renderer directory (or the main dir in dev).
+    const filePath = path.normalize(decodeURIComponent(parsed.pathname));
+    const rendererRoot = path.normalize(RENDERER_DIR + path.sep);
+    return filePath.startsWith(rendererRoot);
+  }
+  return false;
+}
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
@@ -18,6 +96,7 @@ async function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
     titleBarStyle: 'hiddenInset',
     show: false,
@@ -92,51 +171,93 @@ function createTray() {
   });
 }
 
-// IPC handlers for keystore
+// --- IPC input validation -------------------------------------------------
+// All keystore IPC arguments come from the (potentially compromised) renderer
+// and must be treated as untrusted.
+
+const KEY_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/;
+const MAX_KEY_BYTES = 8192;
+
+function assertValidKeyId(keyId) {
+  if (typeof keyId !== 'string' || !KEY_ID_PATTERN.test(keyId)) {
+    throw new Error('keystore: invalid keyId');
+  }
+}
+
+function assertValidKeyMaterial(key) {
+  if (typeof key === 'string') {
+    if (key.length === 0 || key.length > MAX_KEY_BYTES) {
+      throw new Error('keystore: invalid key material');
+    }
+    return;
+  }
+  // Structured clone delivers Uint8Array as-is and ArrayBuffer as ArrayBuffer.
+  const byteLength =
+    key instanceof Uint8Array ? key.byteLength :
+    key instanceof ArrayBuffer ? key.byteLength :
+    null;
+  if (byteLength === null || byteLength === 0 || byteLength > MAX_KEY_BYTES) {
+    throw new Error('keystore: invalid key material');
+  }
+}
+
+// IPC handlers for keystore.
+// SECURITY NOTE: retrieve() still hands raw key bytes to the renderer. The
+// recommended follow-up is to move encrypt/decrypt into the main process
+// (e.g. 'crypto:decrypt' taking ciphertext and a keyId) so raw keys never
+// cross the context bridge and a renderer XSS cannot read them.
 ipcMain.handle('keystore:store', async (event, keyId, key) => {
-  return storeKey(keyId, key);
+  assertValidKeyId(keyId);
+  assertValidKeyMaterial(key);
+  return storeKey(keyId, key instanceof ArrayBuffer ? new Uint8Array(key) : key);
 });
 
 ipcMain.handle('keystore:retrieve', async (event, keyId) => {
+  assertValidKeyId(keyId);
   return retrieveKey(keyId);
 });
 
 ipcMain.handle('keystore:delete', async (event, keyId) => {
+  assertValidKeyId(keyId);
   return deleteKey(keyId);
 });
 
-// Certificate pinning for SimpleX SMP servers
-const PINNED_CERTS = {
-  'smp4.simplex.im': [
-    'sha256/sFbsmFMBEWvgBjBSsHB9yOGtZ0GkLSN8YiHhNAOk1ys=',
-    'sha256/jQJTbIh0grw0/1TkHSumWb+Fs0Ggogr621gT3PvPKG0=',
-  ],
-  'smp5.simplex.im': [
-    'sha256/sFbsmFMBEWvgBjBSsHB9yOGtZ0GkLSN8YiHhNAOk1ys=',
-    'sha256/jQJTbIh0grw0/1TkHSumWb+Fs0Ggogr621gT3PvPKG0=',
-  ],
-  'smp6.simplex.im': [
-    'sha256/sFbsmFMBEWvgBjBSsHB9yOGtZ0GkLSN8YiHhNAOk1ys=',
-    'sha256/jQJTbIh0grw0/1TkHSumWb+Fs0Ggogr621gT3PvPKG0=',
-  ],
-};
+// App version for the renderer (preload is sandboxed and must not require()
+// arbitrary files).
+ipcMain.handle('app:get-version', () => app.getVersion());
 
-app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
-  const hostname = new URL(url).hostname;
-  const pins = PINNED_CERTS[hostname];
-  if (pins) {
-    // Reject connections with untrusted certificates to pinned hosts
-    event.preventDefault();
-    callback(false);
-  } else {
-    // Use default behavior for non-pinned hosts
-    callback(true);
-  }
-});
+// NOTE on certificate handling: the previous 'certificate-error' handler was
+// removed. It never compared the presented certificate against any pin set
+// ('certificate-error' only fires AFTER Chromium has already rejected the
+// cert), and its `callback(true)` branch for non-pinned hosts was the classic
+// TLS-validation-bypass anti-pattern. Chromium's default validation (reject on
+// any certificate error) now applies to all hosts. If real pinning of the SMP
+// servers is desired, implement it with ses.setCertificateVerifyProc(), compare
+// the presented chain's SPKI hashes against known pins on the SUCCESS path as
+// well, and never accept a certificate Chromium has rejected.
 
 // App lifecycle
 app.whenReady().then(async () => {
-  await initKeystore();
+  installCsp();
+
+  const keystoreOk = await initKeystore();
+  if (!keystoreOk) {
+    // Do not silently degrade to in-memory key storage (LOW-1): surface it.
+    if (isDev) {
+      console.warn(
+        'WARNING: OS keychain unavailable; using volatile in-memory keystore (dev only).'
+      );
+    } else {
+      dialog.showErrorBox(
+        'ArkAChat - Secure keystore unavailable',
+        'The OS keychain could not be initialized. ArkAChat cannot store ' +
+          'encryption keys securely on this system and will exit.'
+      );
+      app.exit(1);
+      return;
+    }
+  }
+
   await createWindow();
   createTray();
 
@@ -163,9 +284,28 @@ app.on('before-quit', () => {
   app.isQuitting = true;
 });
 
-// Security: Prevent new windows
+// Security: pin top-frame navigation to the app origin and deny new windows.
 app.on('web-contents-created', (event, contents) => {
-  contents.setWindowOpenHandler(() => {
+  // Block any top-frame navigation away from the app's own origin. External
+  // https links are handed to the OS browser instead of navigating the window
+  // that holds the preload/keystore bridge.
+  const guardNavigation = (navEvent, url) => {
+    if (isAppUrl(url)) {
+      return;
+    }
+    navEvent.preventDefault();
+    if (url.startsWith('https://')) {
+      shell.openExternal(url).catch(() => {});
+    }
+  };
+  contents.on('will-navigate', guardNavigation);
+  contents.on('will-redirect', guardNavigation);
+
+  // Never create new Electron windows. Validated https links open externally.
+  contents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('https://')) {
+      shell.openExternal(url).catch(() => {});
+    }
     return { action: 'deny' };
   });
 });

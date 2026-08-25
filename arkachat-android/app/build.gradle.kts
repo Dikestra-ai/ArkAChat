@@ -49,6 +49,8 @@ android {
 
     buildFeatures {
         compose = true
+        // Needed for BuildConfig.DEBUG (WebView debugging is debug-gated).
+        buildConfig = true
     }
 
     packaging {

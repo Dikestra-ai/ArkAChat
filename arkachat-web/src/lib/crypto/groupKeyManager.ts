@@ -1,6 +1,7 @@
 import { pad, unpad } from './messagePadding';
 import { Shield, shieldCrypto } from '../shield/crypto';
 import { useGroupStore, type Group, type GroupKey } from '../storage/groupStore';
+import { encryptAtRest, decryptAtRest } from '../storage/atRestCrypto';
 
 const KEY_SIZE = 32;
 const MAX_OLD_KEYS_TO_KEEP = 10;
@@ -217,6 +218,10 @@ export class GroupKeyManager {
     return newKey;
   }
 
+  // The group master key is wrapped with AES-GCM under a non-extractable
+  // device key (storage/atRestCrypto.ts) before it is written to IndexedDB —
+  // it is never persisted in cleartext (security review web-crypto #1, which
+  // noted the cleartext master key defeated the wrapping of all group keys).
   private async loadMasterKey(): Promise<Uint8Array | null> {
     return new Promise((resolve) => {
       const request = indexedDB.open('arkachat-group-keys', 1);
@@ -230,8 +235,21 @@ export class GroupKeyManager {
         const getRequest = store.get('group_master_key');
 
         getRequest.onsuccess = () => {
-          if (getRequest.result) {
-            resolve(new Uint8Array(getRequest.result.key));
+          const result = getRequest.result;
+          if (!result) {
+            resolve(null);
+          } else if (result.wrapped) {
+            decryptAtRest(new Uint8Array(result.wrapped))
+              .then((key) => resolve(key))
+              .catch(() => resolve(null));
+          } else if (result.key) {
+            // Legacy cleartext record — migrate it to the wrapped format.
+            const key = new Uint8Array(result.key);
+            this.saveMasterKey(key)
+              .catch(() => {
+                /* best-effort migration; key still usable this session */
+              })
+              .finally(() => resolve(key));
           } else {
             resolve(null);
           }
@@ -250,6 +268,7 @@ export class GroupKeyManager {
   }
 
   private async saveMasterKey(key: Uint8Array): Promise<void> {
+    const wrapped = await encryptAtRest(key);
     return new Promise((resolve, reject) => {
       const request = indexedDB.open('arkachat-group-keys', 1);
 
@@ -259,7 +278,7 @@ export class GroupKeyManager {
         const db = request.result;
         const transaction = db.transaction(['master'], 'readwrite');
         const store = transaction.objectStore('master');
-        store.put({ id: 'group_master_key', key: Array.from(key) });
+        store.put({ id: 'group_master_key', wrapped: Array.from(wrapped) });
 
         transaction.oncomplete = () => resolve();
         transaction.onerror = () => reject(transaction.error);

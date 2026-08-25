@@ -89,6 +89,19 @@ type MessageCallback = (message: Message) => void;
 type ConnectionCallback = (state: ConnectionState) => void;
 
 /**
+ * Group control messages that only an admin may originate (security review
+ * web-crypto finding #2). A plain member may still announce their own
+ * departure (MEMBER_REMOVED with an empty memberId — see leaveGroup()).
+ */
+const ADMIN_ONLY_GROUP_TYPES: ReadonlySet<GroupMessageType> = new Set<GroupMessageType>([
+  'MEMBER_ADDED',
+  'MEMBER_REMOVED',
+  'ADMIN_CHANGE',
+  'GROUP_INFO_UPDATE',
+  'KEY_ROTATION',
+]);
+
+/**
  * Bridge connecting Shield encryption with SimpleX messaging.
  * Supports both 1:1 and group messaging.
  */
@@ -117,20 +130,11 @@ export class ShieldSimplexBridge {
     this.simplex = simplex ?? simplexClient;
     this.groupKeys = groupKeys ?? groupKeyManager;
     this.fileStorage = fileStorage ?? createEncryptedFileStorage({
-      getKey: async (keyId) => {
-        // Access keys from the crypto store via transaction
-        const db = await this.openKeyStore();
-        return new Promise((resolve, reject) => {
-          const tx = db.transaction('keys', 'readonly');
-          const store = tx.objectStore('keys');
-          const request = store.get(keyId);
-          request.onsuccess = () => {
-            const record = request.result;
-            resolve(record ? new Uint8Array(record.key) : null);
-          };
-          request.onerror = () => reject(request.error);
-        });
-      },
+      // Delegate to WebShieldCrypto so key records are read through the
+      // at-rest encryption layer and through the single canonical IndexedDB
+      // version owned by that module (previously this opened the same DB at
+      // a conflicting lower version and read raw cleartext records).
+      getKey: async (keyId) => this.crypto.getStoredKey(keyId),
     });
   }
 
@@ -885,14 +889,6 @@ export class ShieldSimplexBridge {
     return bytes;
   }
 
-  private async openKeyStore(): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open('arkachat-shield', 1);
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result);
-    });
-  }
-
   // ==================== Group Messaging ====================
 
   /**
@@ -1397,6 +1393,35 @@ export class ShieldSimplexBridge {
       // Parse the group message envelope
       const envelope: GroupMessageEnvelope = JSON.parse(envelopeJson);
 
+      // ---- Sender authorization (security review web-crypto #2) ----
+      // The sender's identity is the authenticated pairwise contact this
+      // message arrived from (contact.id) — NEVER the attacker-controlled
+      // envelope.senderId. The shared group key proves membership in the
+      // ciphertext sense only, not authorship or role, so every state-
+      // mutating control message must be checked against our local roster.
+      const senderMember = (useGroupStore.getState().members[groupId] || []).find(
+        (m) => m.contactId === contact.id
+      );
+      if (!senderMember) {
+        console.warn(
+          `[security] Rejected group ${envelope.type} for group ${groupId}: ` +
+            `sender ${contact.id} is not a current member`
+        );
+        return;
+      }
+      if (ADMIN_ONLY_GROUP_TYPES.has(envelope.type) && senderMember.role !== 'admin') {
+        // Exception: a plain member may announce their own departure.
+        const isSelfLeave =
+          envelope.type === 'MEMBER_REMOVED' && (envelope.metadata?.memberId ?? '') === '';
+        if (!isSelfLeave) {
+          console.warn(
+            `[security] Rejected group ${envelope.type} for group ${groupId}: ` +
+              `sender ${contact.id} is not an admin`
+          );
+          return;
+        }
+      }
+
       // Handle based on message type
       switch (envelope.type) {
         case 'TEXT':
@@ -1406,10 +1431,10 @@ export class ShieldSimplexBridge {
           await this.handleGroupFileMessage(contact, group, envelope);
           break;
         case 'MEMBER_ADDED':
-          await this.handleMemberAdded(group, envelope);
+          await this.handleMemberAdded(contact, group, envelope);
           break;
         case 'MEMBER_REMOVED':
-          await this.handleMemberRemoved(group, envelope);
+          await this.handleMemberRemoved(contact, group, envelope);
           break;
         case 'KEY_ROTATION':
           // Already handled via GROUP_KEY: prefix
@@ -1476,7 +1501,11 @@ export class ShieldSimplexBridge {
     useGroupStore.getState().addGroupMessage(message);
   }
 
-  private async handleMemberAdded(group: Group, envelope: GroupMessageEnvelope): Promise<void> {
+  private async handleMemberAdded(
+    sender: Contact,
+    group: Group,
+    envelope: GroupMessageEnvelope
+  ): Promise<void> {
     const memberId = envelope.metadata?.memberId;
     if (!memberId) return;
 
@@ -1496,7 +1525,9 @@ export class ShieldSimplexBridge {
       displayName,
       role: 'member',
       joinedAt: envelope.timestamp,
-      addedBy: envelope.senderId,
+      // Attribute to the authenticated pairwise sender, not the spoofable
+      // envelope.senderId field.
+      addedBy: sender.id,
     };
 
     useGroupStore.getState().addMember(member);
@@ -1514,9 +1545,21 @@ export class ShieldSimplexBridge {
     useGroupStore.getState().addGroupMessage(systemMessage);
   }
 
-  private async handleMemberRemoved(group: Group, envelope: GroupMessageEnvelope): Promise<void> {
-    const memberId = envelope.metadata?.memberId;
-    if (memberId === undefined) return;
+  private async handleMemberRemoved(
+    sender: Contact,
+    group: Group,
+    envelope: GroupMessageEnvelope
+  ): Promise<void> {
+    const rawMemberId = envelope.metadata?.memberId;
+    if (rawMemberId === undefined) return;
+
+    // An empty memberId means "the sender left voluntarily" (see
+    // leaveGroup()). Map it to the authenticated sender so a non-admin
+    // member can only ever remove themselves — never us or anyone else.
+    // (Previously '' was interpreted as *our own* id, letting any member
+    // forge "You were removed from the group" and evict us locally.)
+    const isSelfLeave = rawMemberId === '';
+    const memberId = isSelfLeave ? sender.id : rawMemberId;
 
     // Get display name before removing
     const member = useGroupStore.getState().members[group.id]?.find(
@@ -1526,10 +1569,9 @@ export class ShieldSimplexBridge {
 
     useGroupStore.getState().removeMember(group.id, memberId);
 
-    // Check if self was removed
-    const content = memberId === ''
-      ? 'You were removed from the group'
-      : `${displayName} left the group`;
+    const content = isSelfLeave
+      ? `${displayName} left the group`
+      : `${displayName} was removed from the group`;
 
     // Insert system message
     const systemMessage: GroupMessage = {
@@ -1667,7 +1709,29 @@ export class ShieldSimplexBridge {
         useGroupStore.getState().addGroup(group);
         useGroupStore.getState().setMembers(groupId, [selfMember, creatorMember]);
       } else {
-        // Key rotation - update key
+        // Key rotation for a group we already know about. Only a current
+        // ADMIN may replace the active group key — otherwise any pairwise
+        // contact who learns the groupId could hijack currentKeyId and make
+        // us encrypt future group traffic under an attacker-supplied key
+        // (security review web-crypto finding #2).
+        const senderMember = (useGroupStore.getState().members[groupId] || []).find(
+          (m) => m.contactId === contact.id
+        );
+        if (!senderMember) {
+          console.warn(
+            `[security] Rejected GROUP_KEY for group ${groupId}: ` +
+              `sender ${contact.id} is not a current member`
+          );
+          return;
+        }
+        if (senderMember.role !== 'admin') {
+          console.warn(
+            `[security] Rejected GROUP_KEY for group ${groupId}: ` +
+              `sender ${contact.id} is not an admin`
+          );
+          return;
+        }
+
         await this.groupKeys.storeReceivedKey(groupId, keyId, groupKey, rotationNumber);
         useGroupStore.getState().updateGroup(groupId, {
           currentKeyId: keyId,

@@ -28,12 +28,18 @@
 
 setup() ->
     application:ensure_all_started(crypto),
+    %% shield_bridge fails closed without a configured master key, so give
+    %% the test run a throwaway random one via the application env.
+    TestKeyHex = binary_to_list(
+                     binary:encode_hex(crypto:strong_rand_bytes(32))),
+    application:set_env(arkachat, shield_key_hex, TestKeyHex),
     {ok, Pid} = shield_bridge:start_link(),
     Pid.
 
 teardown(Pid) ->
     unlink(Pid),
     exit(Pid, kill),
+    application:unset_env(arkachat, shield_key_hex),
     catch ets:delete(arkachat_msgs),
     catch ets:delete(arkachat_contacts),
     catch ets:delete(arkachat_groups),

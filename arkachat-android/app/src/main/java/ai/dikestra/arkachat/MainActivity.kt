@@ -13,6 +13,7 @@ import android.view.View
 import android.webkit.*
 import android.widget.ProgressBar
 import android.widget.RelativeLayout
+import android.view.WindowManager
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -50,6 +51,13 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Chat content and QR/pairing screens are rendered in this window:
+        // block screenshots, screen recording, and the recents thumbnail.
+        window.setFlags(
+            WindowManager.LayoutParams.FLAG_SECURE,
+            WindowManager.LayoutParams.FLAG_SECURE
+        )
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED
@@ -69,7 +77,11 @@ class MainActivity : AppCompatActivity() {
             ))
         }
 
-        WebView.setWebContentsDebuggingEnabled(true) // Allow chrome://inspect in debug builds
+        // Remote WebView debugging exposes DOM/JS (and the ArkA bridge) to any
+        // ADB-attached host — never enable it in release builds.
+        if (BuildConfig.DEBUG) {
+            WebView.setWebContentsDebuggingEnabled(true) // chrome://inspect, debug only
+        }
 
         webView = WebView(this).apply {
             swipeRefresh.addView(this)
@@ -77,9 +89,11 @@ class MainActivity : AppCompatActivity() {
                 javaScriptEnabled = true
                 domStorageEnabled = true
                 databaseEnabled = true
-                allowFileAccess = true
+                // The app loads only http(s) app origins — no file:// content.
+                allowFileAccess = false
                 mediaPlaybackRequiresUserGesture = false
-                mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                // Never silently mix cleartext subresources into the page.
+                mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                 cacheMode = WebSettings.LOAD_DEFAULT
                 @Suppress("DEPRECATION")
                 setSupportMultipleWindows(false)
@@ -141,19 +155,28 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onPermissionRequest(request: PermissionRequest) {
-                val camera = request.resources.contains(PermissionRequest.RESOURCE_VIDEO_CAPTURE)
-                if (camera) {
-                    if (ContextCompat.checkSelfPermission(
-                            this@MainActivity, Manifest.permission.CAMERA
-                        ) == PackageManager.PERMISSION_GRANTED
-                    ) {
-                        request.grant(request.resources)
-                    } else {
-                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                        request.grant(request.resources)
-                    }
+                // Deny-by-default. Only the camera may ever be granted, and
+                // only to the trusted app origin, and only once the OS-level
+                // permission has actually been granted. Everything else
+                // (microphone, protected media, ...) is always denied.
+                val wantsCameraOnly = request.resources.size == 1 &&
+                    request.resources[0] == PermissionRequest.RESOURCE_VIDEO_CAPTURE
+
+                if (!wantsCameraOnly || !isTrustedOrigin(request.origin)) {
+                    request.deny()
+                    return
+                }
+
+                if (ContextCompat.checkSelfPermission(
+                        this@MainActivity, Manifest.permission.CAMERA
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    request.grant(arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE))
                 } else {
-                    request.grant(request.resources)
+                    // Ask the OS but do NOT grant now; the page can re-request
+                    // after the user has granted the OS permission.
+                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                    request.deny()
                 }
             }
 
@@ -184,6 +207,21 @@ class MainActivity : AppCompatActivity() {
             webView.restoreState(savedInstanceState)
         } else {
             webView.loadUrl(webAppUrl)
+        }
+    }
+
+    /**
+     * A page origin is trusted only if it exactly matches (scheme, host, port)
+     * of one of the two configured app origins. Web permission grants
+     * (camera) are restricted to these origins.
+     */
+    private fun isTrustedOrigin(origin: Uri?): Boolean {
+        if (origin == null) return false
+        val trusted = listOf(Uri.parse(webAppUrl), Uri.parse(nitrogenUrl))
+        return trusted.any { app ->
+            origin.scheme == app.scheme &&
+                origin.host == app.host &&
+                origin.port == app.port
         }
     }
 

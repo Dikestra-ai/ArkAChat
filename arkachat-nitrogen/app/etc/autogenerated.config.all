@@ -1,0 +1,48 @@
+%% vim: ts=4 sw=4 et ft=erlang
+%% ArkAChat application config.
+%% A Shield master key is REQUIRED: set ARKACHAT_SHIELD_KEY (64-char hex) in
+%% the environment, or shield_key_hex below. The app fails closed (refuses to
+%% start) if no key is configured — there is no derived/default key.
+[
+    {arkachat, [
+        %% 256-bit AES key as hex (overridden by ARKACHAT_SHIELD_KEY env var).
+        %% Prefer the env var / a secret manager over committing a key here.
+        %% {shield_key_hex, "your64hexcharshere..."},
+
+        %% Built-in bots loaded at startup. Add {id, module} pairs here.
+        {bots, [
+            {"bot-echo",   bot_echo},
+            {"bot-status", bot_status}
+        ]}
+
+        %% Optional: URL of the ShieldSimplexBridge HTTP API for cross-platform sync.
+        %% If not set, messages are stored locally in ETS.
+        %% {bridge_api_url, "http://localhost:9000"}
+    ]}
+].
+
+%% vim: ts=4 sw=4 et ft=erlang
+%% simple_bridge configuration for ArkAChat.
+%% All values are overridable via environment variables — see sys.config.
+[
+    {simple_bridge, [
+        {handler,  nitrogen},
+        {backend,  cowboy},
+
+        {address, "0.0.0.0"},
+        %% Override with env ARKACHAT_BIND_ADDR
+
+        {port, 8000},
+        %% Override with env ARKACHAT_PORT
+
+        {document_root, "./priv/static"},
+
+        {static_paths, ["js/", "css/", "images/", "nitrogen/", "favicon.ico"]},
+
+        {max_post_size,          10},
+        {max_file_size,          10},
+        {max_file_in_memory_size, 0},
+        {scratch_dir,            "./scratch"}
+    ]}
+].
+

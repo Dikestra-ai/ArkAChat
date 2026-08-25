@@ -79,9 +79,28 @@ class ShieldCrypto(private val context: Context) {
     }
 
     companion object {
-        // Label for media key derivation - must be at least 24 bytes for proper key derivation
-        // (Shield output = nonce(16) + counter(8) + plaintext + mac(16), need 32 bytes after nonce)
-        private val MEDIA_KEY_LABEL = "media_key_derivation_v1_pad_32b".toByteArray(Charsets.UTF_8)
+        // Domain-separation label for media key derivation.
+        // MUST stay in sync with arkachat-web (crypto.ts importSharedKey):
+        //   mediaKey = SHA-256(sharedKey || "media")
+        private val MEDIA_KEY_LABEL = "media".toByteArray(Charsets.UTF_8)
+
+        /**
+         * Deterministically derive the media key from the pairwise shared key.
+         *
+         * Both sides of a conversation must derive the same media key from the
+         * same shared key. This mirrors the web client's derivation exactly
+         * (SHA-256 over sharedKey || "media"), so keys agree cross-platform.
+         *
+         * NOTE: do NOT derive keys from Shield.quickEncrypt output — that
+         * output is randomized (fresh nonce, random padding, timestamp) and
+         * yields a different value on every call.
+         */
+        internal fun deriveMediaKey(sharedKey: ByteArray): ByteArray {
+            val md = java.security.MessageDigest.getInstance("SHA-256")
+            md.update(sharedKey)
+            md.update(MEDIA_KEY_LABEL)
+            return md.digest() // 32 bytes
+        }
     }
 
     /**
@@ -91,11 +110,10 @@ class ShieldCrypto(private val context: Context) {
     fun generateSharedKey(contactId: String): ByteArray {
         val sharedKey = ShieldUtils.randomBytes(ShieldUtils.KEY_SIZE)
 
-        // Derive media key using Shield encryption
-        // Output format: nonce(16) + enc(counter(8) + plaintext) + mac(16)
-        // We extract 32 bytes starting after the nonce for the derived key
-        val encrypted = Shield.quickEncrypt(sharedKey, MEDIA_KEY_LABEL)
-        val mediaKey = encrypted.copyOfRange(16, 48)
+        // Deterministic KDF: mediaKey = SHA-256(sharedKey || "media").
+        // Matches importSharedKey() and the web client, so the peer that
+        // imports this shared key derives the identical media key.
+        val mediaKey = deriveMediaKey(sharedKey)
 
         keyManager.storeKey("shared_key_$contactId", sharedKey)
         keyManager.storeKey("media_key_$contactId", mediaKey)
@@ -109,9 +127,8 @@ class ShieldCrypto(private val context: Context) {
     fun importSharedKey(contactId: String, sharedKey: ByteArray) {
         require(sharedKey.size == ShieldUtils.KEY_SIZE) { "Invalid key size" }
 
-        // Derive media key using Shield encryption (same derivation as generateSharedKey)
-        val encrypted = Shield.quickEncrypt(sharedKey, MEDIA_KEY_LABEL)
-        val mediaKey = encrypted.copyOfRange(16, 48)
+        // Same deterministic derivation as generateSharedKey (and web client).
+        val mediaKey = deriveMediaKey(sharedKey)
 
         keyManager.storeKey("shared_key_$contactId", sharedKey)
         keyManager.storeKey("media_key_$contactId", mediaKey)

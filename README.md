@@ -13,7 +13,11 @@
 
 ### Android APK (sideload)
 
-> Latest debug build from CI — no Play Store required.
+> ⚠️ **Development builds only.** CI artifacts are **unsigned debug** APKs
+> intended for testing — they are debuggable and carry no release signature or
+> provenance. For real use, install the signed `app-release.apk` from
+> [Releases](https://github.com/Dikestra-ai/ArkAChat/releases) and verify it
+> against the release `SHA256SUMS`.
 
 1. On your Android device, enable **Settings → Security → Install unknown apps** for your browser
 2. Download the APK:
@@ -30,7 +34,7 @@
 | macOS    | artifact `arkachat-macos` (`.dmg`) |
 | Windows  | artifact `arkachat-windows` (`.exe`) |
 
-Stable releases (signed) are published at [Releases](https://github.com/Dikestra-ai/ArkAChat/releases) when a `v*.*.*` tag is pushed.
+Stable releases are published at [Releases](https://github.com/Dikestra-ai/ArkAChat/releases) when a `v*.*.*` tag is pushed. The Android `app-release.apk` is signed with the ArkAChat release key (verify with `apksigner verify --print-certs`); desktop binaries are **not yet code-signed** — verify every download against the release `SHA256SUMS` file (`sha256sum -c SHA256SUMS --ignore-missing`).
 
 ### Web
 

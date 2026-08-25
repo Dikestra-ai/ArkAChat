@@ -12,16 +12,20 @@ on:
       - 'arkachat-nitrogen/**'
       - '.github/workflows/ci-erlang.yml'
 
+# F10: least-privilege token; actions pinned to commit SHAs (mutable tags can be retargeted).
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Compile & EUnit
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up Erlang/OTP
-        uses: erlef/setup-beam@v1
+        uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         with:
           otp-version: '27'
           rebar3-version: '3.27.0'

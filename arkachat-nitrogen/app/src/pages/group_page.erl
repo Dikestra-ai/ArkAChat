@@ -10,7 +10,11 @@
 main() -> #template{file = "./priv/templates/app.html"}.
 
 title() ->
-    "ArkAChat \226\128\148 " ++ group_name(group_id()).
+    %% The [[[page:title()]]] template slot inlines this string raw (it is
+    %% not an element `text` attribute, so Nitrogen's default html_encode
+    %% does not apply). Encode the user-controlled name explicitly to stop
+    %% </title><script> breakouts.
+    "ArkAChat \226\128\148 " ++ wf:html_encode(group_name(group_id())).
 
 body() ->
     Id     = group_id(),

@@ -1,38 +1,88 @@
-version: "3.8"
-
 services:
   shield-proxy-active:
     build:
       context: ..
       dockerfile: arkachat-proxy/Dockerfile
     ports:
+      # F2/F3: only the client entrypoint is published. Metrics (9090) binds
+      # loopback inside the container and the DNS forwarder (5353) is disabled
+      # in the config — neither is reachable from the host or the internet.
       - "8443:8443"
-      - "5353:5353/udp"
-      - "9090:9090"
+    expose:
+      # Redundancy heartbeat (UDP) — internal compose network only.
+      - "8444/udp"
     volumes:
-      - ./shield-proxy.toml:/etc/shield-proxy/config.toml:ro
+      # F1: mount the TEMPLATE; entrypoint.sh renders ${VAR} secrets with
+      # envsubst into /run/shield-proxy/config.toml (tmpfs) before exec'ing
+      # the proxy, and refuses to start on missing/placeholder secrets.
+      - ./shield-proxy.toml.template:/etc/shield-proxy/config.toml.template:ro
+    tmpfs:
+      # Writable scratch for the rendered config only — rootfs is read-only.
+      - /run/shield-proxy:size=1m,mode=1777
     env_file:
       - .env
     environment:
       RUST_LOG: info
     restart: on-failure
+    # F7/F8 container hardening
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 512m
+    cpus: 2.0
     healthcheck:
-      test: ["CMD", "/usr/local/bin/shield-proxy", "--health-check"]
+      # F7: real TCP-connect probe against the client listener. The previous
+      # "shield-proxy --health-check" is NOT parsed by the binary (it has no
+      # CLI argument handling) and instead launched a second proxy instance
+      # that raced for the same ports.
+      test: ["CMD", "/bin/bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8443 && exec 3<&- 3>&-"]
       interval: 10s
       timeout: 5s
       retries: 3
+    networks:
+      - shield
 
   shield-proxy-standby:
     build:
       context: ..
       dockerfile: arkachat-proxy/Dockerfile
+    # No published ports: clients reach the standby only after failover via a
+    # VIP / load balancer in front of both nodes (ops-level; see redundancy
+    # virtual_ip in upstream shield-proxy). Publishing 8443 here would conflict
+    # with the active node on a single host.
+    expose:
+      - "8444/udp"
     volumes:
-      - ./shield-proxy-standby.toml:/etc/shield-proxy/config.toml:ro
+      - ./shield-proxy-standby.toml.template:/etc/shield-proxy/config.toml.template:ro
+    tmpfs:
+      - /run/shield-proxy:size=1m,mode=1777
     env_file:
       - .env
     environment:
       RUST_LOG: info
     restart: on-failure
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 512m
+    cpus: 2.0
+    healthcheck:
+      test: ["CMD", "/bin/bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8443 && exec 3<&- 3>&-"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     depends_on:
       shield-proxy-active:
         condition: service_healthy
+    networks:
+      - shield
+
+networks:
+  shield:
+    driver: bridge
