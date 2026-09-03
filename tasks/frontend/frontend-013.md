@@ -1,7 +1,7 @@
 ---
 id: frontend-013
 title: 'SEC: Android FLAG_SECURE missing — chat screens captured in recents/screenshots'
-status: todo
+status: doing
 priority: medium
 tags:
 - frontend
