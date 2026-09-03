@@ -77,8 +77,10 @@ event({send, ContactId}) ->
     case is_bot(ContactId) of
         true ->
             case bot:send(ContactId, Me, Text) of
-                noreply -> ok;
-                Reply   -> shield_bridge:store_message(ConvId, ContactId, Reply)
+                noreply              -> ok;
+                {error, unknown_bot} -> ok;   %% unknown/unregistered bot id
+                Reply                ->
+                    shield_bridge:store_message(ConvId, ContactId, Reply)
             end;
         false -> ok
     end,
