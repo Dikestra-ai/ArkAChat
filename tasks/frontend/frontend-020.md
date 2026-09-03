@@ -1,7 +1,7 @@
 ---
 id: frontend-020
 title: 'SEC: Web QR scan auto-connects with no fingerprint confirmation; displayName unsanitized (impersonation)'
-status: todo
+status: doing
 priority: medium
 tags:
 - frontend
