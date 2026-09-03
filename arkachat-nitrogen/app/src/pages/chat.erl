@@ -4,7 +4,9 @@
 %% URL: /chat?id=<contact_id>
 %%
 -module(chat).
--compile(export_all).
+%% Export only the Nitrogen page entry points — never export_all on page
+%% modules; it exposes every internal helper as a callable RPC target.
+-export([main/0, title/0, body/0, event/1]).
 -include_lib("nitrogen_core/include/wf.hrl").
 
 main() -> #template{file = "./priv/templates/app.html"}.
@@ -17,6 +19,7 @@ title() ->
     "ArkAChat \226\128\148 " ++ wf:html_encode(contact_name(contact_id())).
 
 body() ->
+    require_auth(),
     Id     = contact_id(),
     Name   = contact_name(Id),
     IsBot  = is_bot(Id),
@@ -124,6 +127,18 @@ conv_id(ContactId) ->
     Me   = me(),
     Pair = lists:sort([Me, ContactId]),
     "dm_" ++ string:join(Pair, "_").
+
+%% require_auth/0 — partial auth guard (auth-006, partial fix).
+%% Full auth model (session tokens, user scoping) is tracked in auth-003.
+%% For now: if no session user is set, redirect to /login so the page is
+%% not served as the shared "guest" identity.  The redirect itself is a
+%% no-op in the current dev setup where wf:user() is always undefined, but
+%% it enforces the correct control flow for a real login integration.
+require_auth() ->
+    case wf:user() of
+        undefined -> wf:redirect("/login");
+        _User     -> ok
+    end.
 
 me() ->
     case wf:user() of

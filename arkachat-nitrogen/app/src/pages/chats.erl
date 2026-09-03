@@ -4,7 +4,9 @@
 %% Shows DMs, groups, and bot contacts in one sorted list.
 %%
 -module(chats).
--compile(export_all).
+%% Export only the Nitrogen page entry points — never export_all on page
+%% modules; it exposes every internal helper as a callable RPC target.
+-export([main/0, title/0, body/0, event/1]).
 -include_lib("nitrogen_core/include/wf.hrl").
 
 main() -> #template{file = "./priv/templates/app.html"}.

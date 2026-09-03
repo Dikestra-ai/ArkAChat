@@ -4,7 +4,9 @@
 %% URL: /group?id=<group_id>
 %%
 -module(group_page).
--compile(export_all).
+%% Export only the Nitrogen page entry points — never export_all on page
+%% modules; it exposes every internal helper as a callable RPC target.
+-export([main/0, title/0, body/0, event/1]).
 -include_lib("nitrogen_core/include/wf.hrl").
 
 main() -> #template{file = "./priv/templates/app.html"}.
@@ -17,6 +19,7 @@ title() ->
     "ArkAChat \226\128\148 " ++ wf:html_encode(group_name(group_id())).
 
 body() ->
+    require_auth(),
     Id     = group_id(),
     Name   = group_name(Id),
     ConvId = "grp_" ++ Id,
@@ -136,6 +139,14 @@ group_name(Id) ->
               maps:get(id, G) =:= Id ] of
         [N|_] -> N;
         _     -> Id
+    end.
+
+%% require_auth/0 — partial auth guard (auth-006, partial fix).
+%% Full auth model (session tokens, user scoping) is tracked in auth-003.
+require_auth() ->
+    case wf:user() of
+        undefined -> wf:redirect("/login");
+        _User     -> ok
     end.
 
 me() ->
