@@ -52,6 +52,13 @@
 -define(T_GROUPS,   arkachat_groups).
 -define(T_MEMBERS,  arkachat_members).
 
+%% ETS size caps — prevent memory-exhaustion DoS (backend-029).
+%% Unauthenticated callers cannot bypass these without auth (auth-003).
+-define(MAX_MSGS_PER_CONV,  1000).   %% max messages per conversation
+-define(MAX_CONTACTS,        500).   %% max total contacts
+-define(MAX_GROUPS,          200).   %% max total groups
+-define(MAX_MEMBERS_PER_GRP, 200).   %% max members per group
+
 %% The master key is wrapped in a zero-arity fun so that crash reports,
 %% `sys:get_status/1` output and error_logger state dumps show an opaque
 %% `#Fun<...>` instead of the raw key bytes. See also format_status/2.
@@ -115,10 +122,16 @@ handle_call({decrypt, MasterKey, Blob}, _From, S) ->
     {reply, shield_decrypt(MasterKey, Blob), S};
 
 handle_call({store_msg, ConvId, Sender, Text}, _From, #state{key = KF} = S) ->
-    Blob = shield_encrypt(KF(), unicode:characters_to_binary(Text)),
-    Ts   = erlang:system_time(millisecond),
-    ets:insert(?T_MSGS, {ConvId, Ts, Sender, Blob}),
-    {reply, ok, S};
+    %% Cap per-conversation message count to prevent memory-exhaustion DoS.
+    Count = length(ets:lookup(?T_MSGS, ConvId)),
+    if Count >= ?MAX_MSGS_PER_CONV ->
+        {reply, {error, too_many_messages}, S};
+    true ->
+        Blob = shield_encrypt(KF(), unicode:characters_to_binary(Text)),
+        Ts   = erlang:system_time(millisecond),
+        ets:insert(?T_MSGS, {ConvId, Ts, Sender, Blob}),
+        {reply, ok, S}
+    end;
 
 handle_call({get_msgs, ConvId}, _From, #state{key = KF} = S) ->
     Rows = lists:sort(ets:lookup(?T_MSGS, ConvId)),
@@ -134,8 +147,14 @@ handle_call(get_contacts, _From, S) ->
     {reply, Cs, S};
 
 handle_call({add_contact, Id, Name}, _From, S) ->
-    ets:insert(?T_CONTACTS, {Id, Name, human}),
-    {reply, ok, S};
+    %% Cap total contact count to prevent memory-exhaustion DoS.
+    Count = ets:info(?T_CONTACTS, size),
+    if Count >= ?MAX_CONTACTS ->
+        {reply, {error, too_many_contacts}, S};
+    true ->
+        ets:insert(?T_CONTACTS, {Id, Name, human}),
+        {reply, ok, S}
+    end;
 
 handle_call(get_groups, _From, S) ->
     Gs = [ #{id => Id, name => Name}
@@ -143,16 +162,28 @@ handle_call(get_groups, _From, S) ->
     {reply, Gs, S};
 
 handle_call({add_group, Id, Name}, _From, S) ->
-    ets:insert(?T_GROUPS, {Id, Name}),
-    {reply, ok, S};
+    %% Cap total group count to prevent memory-exhaustion DoS.
+    Count = ets:info(?T_GROUPS, size),
+    if Count >= ?MAX_GROUPS ->
+        {reply, {error, too_many_groups}, S};
+    true ->
+        ets:insert(?T_GROUPS, {Id, Name}),
+        {reply, ok, S}
+    end;
 
 handle_call({group_members, GroupId}, _From, S) ->
     Members = [ M || {G, M} <- ets:lookup(?T_MEMBERS, GroupId), G =:= GroupId ],
     {reply, Members, S};
 
 handle_call({add_member, GroupId, ContactId}, _From, S) ->
-    ets:insert(?T_MEMBERS, {GroupId, ContactId}),
-    {reply, ok, S};
+    %% Cap per-group member count to prevent memory-exhaustion DoS.
+    Count = length(ets:lookup(?T_MEMBERS, GroupId)),
+    if Count >= ?MAX_MEMBERS_PER_GRP ->
+        {reply, {error, too_many_members}, S};
+    true ->
+        ets:insert(?T_MEMBERS, {GroupId, ContactId}),
+        {reply, ok, S}
+    end;
 
 handle_call(_Req, _From, S) ->
     {reply, {error, unknown}, S}.
