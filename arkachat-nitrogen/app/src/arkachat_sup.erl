@@ -13,6 +13,15 @@ init([]) ->
     application:ensure_all_started(nprocreg),
     application:ensure_all_started(simple_bridge),
 
+    %% SECURITY (deployment-006): only start the sync hot-reloader in dev mode.
+    %% sync watches source directories and hot-loads changed .beam files at
+    %% runtime — in production that turns any file-write into code execution.
+    %% dev_mode defaults to false so it is never active in a release build.
+    case application:get_env(arkachat, dev_mode, false) of
+        true  -> application:ensure_all_started(sync);
+        false -> ok
+    end,
+
     Children = [
         {shield_bridge, {shield_bridge, start_link, []},
             permanent, 5000, worker, [shield_bridge]},
