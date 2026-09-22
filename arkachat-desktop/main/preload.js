@@ -25,13 +25,13 @@ function checkKeyMaterial(key) {
 // Expose a minimal, frozen API to the renderer.
 //
 // SECURITY NOTE: keystore.retrieve() still returns raw key bytes to the
-// renderer, which means a renderer XSS can read encryption keys despite
-// contextIsolation. The recommended architecture is to move encrypt/decrypt
-// into the main process (renderer sends ciphertext + keyId, main returns
-// plaintext) so raw keys never cross this bridge; retrieve() should then be
-// removed from this surface entirely.
+// renderer. Prefer the `crypto` surface below — it performs AES-256-GCM
+// encrypt/decrypt in the main process so raw key bytes never cross the bridge
+// and a renderer XSS can at most produce or consume ciphertext, not read keys.
 contextBridge.exposeInMainWorld('arkachatDesktop', Object.freeze({
-  // Keystore operations (validated; main process validates again)
+  // Keystore operations (validated; main process validates again).
+  // Use crypto.encrypt / crypto.decrypt in preference to keystore.retrieve
+  // wherever possible so raw key bytes stay in the main process.
   keystore: Object.freeze({
     store: (keyId, key) =>
       checkKeyId(keyId) || checkKeyMaterial(key) ||
@@ -40,6 +40,16 @@ contextBridge.exposeInMainWorld('arkachatDesktop', Object.freeze({
       checkKeyId(keyId) || ipcRenderer.invoke('keystore:retrieve', keyId),
     delete: (keyId) =>
       checkKeyId(keyId) || ipcRenderer.invoke('keystore:delete', keyId),
+  }),
+
+  // In-process crypto: AES-256-GCM encrypt/decrypt performed in the main
+  // process using the OS-keychain key. The renderer never sees the raw key.
+  // Wire format: iv(12) || ciphertext || GCM-tag(16)
+  crypto: Object.freeze({
+    encrypt: (keyId, plaintext) =>
+      checkKeyId(keyId) || ipcRenderer.invoke('crypto:encrypt', keyId, plaintext),
+    decrypt: (keyId, ciphertext) =>
+      checkKeyId(keyId) || ipcRenderer.invoke('crypto:decrypt', keyId, ciphertext),
   }),
 
   // Platform info

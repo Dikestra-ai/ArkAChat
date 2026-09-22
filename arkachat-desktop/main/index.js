@@ -219,10 +219,11 @@ function assertValidKeyMaterial(key) {
 }
 
 // IPC handlers for keystore.
-// SECURITY NOTE: retrieve() still hands raw key bytes to the renderer. The
-// recommended follow-up is to move encrypt/decrypt into the main process
-// (e.g. 'crypto:decrypt' taking ciphertext and a keyId) so raw keys never
-// cross the context bridge and a renderer XSS cannot read them.
+// SECURITY NOTE: retrieve() still hands raw key bytes to the renderer.
+// Prefer the crypto:encrypt / crypto:decrypt handlers added below — they keep
+// raw key bytes in the main process and expose only plaintext/ciphertext over
+// the bridge. A renderer XSS can abuse retrieve() but cannot abuse crypto:*
+// to read the raw key.
 ipcMain.handle('keystore:store', async (event, keyId, key) => {
   assertValidKeyId(keyId);
   assertValidKeyMaterial(key);
@@ -237,6 +238,47 @@ ipcMain.handle('keystore:retrieve', async (event, keyId) => {
 ipcMain.handle('keystore:delete', async (event, keyId) => {
   assertValidKeyId(keyId);
   return deleteKey(keyId);
+});
+
+// --- In-process crypto (frontend-012) -----------------------------------
+// These handlers perform AES-256-GCM encrypt/decrypt in the main process
+// using a key from the OS keychain, so the renderer never sees raw key bytes.
+// Use these instead of keystore:retrieve whenever possible.
+//
+// Wire format: iv(12) || ciphertext || GCM-tag(16) (same as Shield quickEncrypt)
+const nodeCrypto = require('node:crypto');
+const AES_GCM_ALGO = 'aes-256-gcm';
+const AES_IV_BYTES = 12;
+const AES_TAG_BYTES = 16;
+
+ipcMain.handle('crypto:encrypt', async (event, keyId, plaintext) => {
+  assertValidKeyId(keyId);
+  const keyBytes = await retrieveKey(keyId);
+  if (!keyBytes) throw new Error(`crypto:encrypt — key not found: ${keyId}`);
+  const key = Buffer.isBuffer(keyBytes) ? keyBytes : Buffer.from(keyBytes);
+  if (key.length !== 32) throw new Error('crypto:encrypt — key must be 32 bytes');
+  const iv = nodeCrypto.randomBytes(AES_IV_BYTES);
+  const data = plaintext instanceof ArrayBuffer ? Buffer.from(plaintext) : Buffer.from(plaintext);
+  const cipher = nodeCrypto.createCipheriv(AES_GCM_ALGO, key, iv);
+  const encrypted = Buffer.concat([cipher.update(data), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return new Uint8Array(Buffer.concat([iv, encrypted, tag]));
+});
+
+ipcMain.handle('crypto:decrypt', async (event, keyId, ciphertext) => {
+  assertValidKeyId(keyId);
+  const keyBytes = await retrieveKey(keyId);
+  if (!keyBytes) throw new Error(`crypto:decrypt — key not found: ${keyId}`);
+  const key = Buffer.isBuffer(keyBytes) ? keyBytes : Buffer.from(keyBytes);
+  if (key.length !== 32) throw new Error('crypto:decrypt — key must be 32 bytes');
+  const buf = ciphertext instanceof ArrayBuffer ? Buffer.from(ciphertext) : Buffer.from(ciphertext);
+  if (buf.length < AES_IV_BYTES + AES_TAG_BYTES) throw new Error('crypto:decrypt — ciphertext too short');
+  const iv = buf.slice(0, AES_IV_BYTES);
+  const tag = buf.slice(buf.length - AES_TAG_BYTES);
+  const enc = buf.slice(AES_IV_BYTES, buf.length - AES_TAG_BYTES);
+  const decipher = nodeCrypto.createDecipheriv(AES_GCM_ALGO, key, iv);
+  decipher.setAuthTag(tag);
+  return new Uint8Array(Buffer.concat([decipher.update(enc), decipher.final()]));
 });
 
 // App version for the renderer (preload is sandboxed and must not require()
