@@ -3,10 +3,13 @@ package ai.dikestra.arkachat.crypto
 import ai.dikestra.arkachat.model.Group
 import ai.dikestra.arkachat.model.GroupKey
 import ai.dikestra.arkachat.model.GroupMember
+import ai.dikestra.arkachat.model.GroupMessageEnvelope
+import ai.dikestra.arkachat.model.GroupMessageType
 import ai.dikestra.arkachat.storage.ContactDao
 import ai.dikestra.arkachat.storage.GroupDao
 import ai.dikestra.shield.Shield
 import ai.dikestra.shield.ShieldUtils
+import java.util.Base64
 import java.util.UUID
 
 /**
@@ -24,7 +27,8 @@ class GroupKeyManager(
     private val keyManager: KeyManager,
     private val shieldCrypto: ShieldCrypto,
     private val groupDao: GroupDao,
-    private val contactDao: ContactDao
+    private val contactDao: ContactDao,
+    private val adminKeyManager: GroupAdminKeyManager = GroupAdminKeyManager()
 ) {
     companion object {
         const val KEY_SIZE = 32 // 256-bit keys
@@ -193,6 +197,73 @@ class GroupKeyManager(
         val newKey = ShieldUtils.randomBytes(KEY_SIZE)
         keyManager.storeKey("group_master_key", newKey)
         return newKey
+    }
+
+    /**
+     * Sign a control-type [envelope] as admin and return a new copy with
+     * [adminSignature] (and optionally [adminPublicKey]) populated.
+     *
+     * Call this on the sending side before serialising the envelope.
+     */
+    fun signEnvelope(envelope: GroupMessageEnvelope): GroupMessageEnvelope {
+        val typeName = envelope.type.name
+        require(typeName in GroupAdminKeyManager.ADMIN_CONTROLLED_TYPES) {
+            "signEnvelope called on non-admin type $typeName"
+        }
+        val payloadJson = envelope.content ?: ""
+        val rawSig = adminKeyManager.signControlMessage(
+            groupId = envelope.groupId,
+            type = typeName,
+            senderId = envelope.senderId,
+            timestamp = envelope.timestamp,
+            payloadJson = payloadJson
+        )
+        val adminPubKey = when (envelope.type) {
+            GroupMessageType.KEY_ROTATION, GroupMessageType.ADMIN_CHANGE ->
+                adminKeyManager.getPublicKey(envelope.groupId)?.let {
+                    Base64.getEncoder().encodeToString(it)
+                }
+            else -> null
+        }
+        return envelope.copy(
+            adminSignature = Base64.getEncoder().encodeToString(rawSig),
+            adminPublicKey = adminPubKey
+        )
+    }
+
+    /**
+     * Verify the [adminSignature] on a received control envelope.
+     *
+     * [storedAdminPublicKey] is the base64 SPKI stored on the [Group] record.
+     * If null (first message from a new group), [envelope.adminPublicKey] is used
+     * and must be stored by the caller before trusting any further messages.
+     *
+     * @return true if the signature is valid
+     */
+    fun verifyEnvelope(
+        envelope: GroupMessageEnvelope,
+        storedAdminPublicKey: String?
+    ): Boolean {
+        val sigBase64 = envelope.adminSignature ?: return false
+        val rawSig = try {
+            Base64.getDecoder().decode(sigBase64)
+        } catch (_: Exception) { return false }
+
+        // Prefer stored key; fall back to key carried in the message (invite/rotation)
+        val pubKeyBase64 = storedAdminPublicKey ?: envelope.adminPublicKey ?: return false
+        val pubKeyBytes = try {
+            Base64.getDecoder().decode(pubKeyBase64)
+        } catch (_: Exception) { return false }
+
+        return adminKeyManager.verifyControlMessage(
+            adminPublicKeyBytes = pubKeyBytes,
+            type = envelope.type.name,
+            groupId = envelope.groupId,
+            senderId = envelope.senderId,
+            timestamp = envelope.timestamp,
+            payloadJson = envelope.content ?: "",
+            rawSignature = rawSig
+        )
     }
 
     /**

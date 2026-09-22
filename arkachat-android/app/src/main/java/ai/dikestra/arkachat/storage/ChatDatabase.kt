@@ -18,7 +18,7 @@ import javax.crypto.SecretKey
 
 @Database(
     entities = [Message::class, Contact::class, Group::class, GroupMember::class, GroupKey::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class ChatDatabase : RoomDatabase() {

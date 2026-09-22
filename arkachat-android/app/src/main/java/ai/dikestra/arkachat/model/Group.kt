@@ -19,7 +19,10 @@ data class Group(
     val avatarPath: String? = null,
     val currentKeyId: String,        // Current group key identifier
     val keyRotationCount: Int = 0,
-    val lastMessageAt: Long? = null
+    val lastMessageAt: Long? = null,
+    // Base64 of X.509 SPKI (DER) for the group admin's ECDSA P-256 public key.
+    // Null until the group invite is received (or self-generated on creation).
+    val adminPublicKey: String? = null
 )
 
 @Entity(
@@ -82,7 +85,14 @@ data class GroupMessageEnvelope(
     val content: String? = null,
     val fileId: String? = null,
     val replyToId: String? = null,
-    val metadata: Map<String, String>? = null
+    val metadata: Map<String, String>? = null,
+    // Present on MEMBER_ADDED, MEMBER_REMOVED, KEY_ROTATION, GROUP_INFO_UPDATE, ADMIN_CHANGE.
+    // Base64 of 64-byte raw ECDSA P-256 signature (r || s) over the canonical signing input.
+    val adminSignature: String? = null,
+    // Present only in messages that (re-)distribute the admin public key:
+    // group creation invite, KEY_ROTATION, ADMIN_CHANGE.
+    // Base64 of X.509 SPKI (DER) of the admin's ECDSA P-256 public key.
+    val adminPublicKey: String? = null
 )
 
 enum class GroupMessageType {

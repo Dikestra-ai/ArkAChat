@@ -55,6 +55,12 @@ export interface GroupMessageEnvelope {
   fileId?: string;
   replyToId?: string;
   metadata?: Record<string, string>;
+  // Base64 of 64-byte raw ECDSA P-256 signature (r || s) over the canonical signing input.
+  // Present on MEMBER_ADDED, MEMBER_REMOVED, KEY_ROTATION, GROUP_INFO_UPDATE, ADMIN_CHANGE.
+  adminSignature?: string;
+  // Base64 of X.509 SPKI (DER) of the admin's ECDSA P-256 public key.
+  // Present only in messages that (re-)distribute the admin key.
+  adminPublicKey?: string;
 }
 
 // Group-specific message type (extends base Message)

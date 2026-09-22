@@ -1,7 +1,8 @@
 import { pad, unpad } from './messagePadding';
 import { Shield, shieldCrypto } from '../shield/crypto';
-import { useGroupStore, type Group, type GroupKey } from '../storage/groupStore';
+import { useGroupStore, type Group, type GroupKey, type GroupMessageEnvelope as GroupMessageEnvelopeWeb } from '../storage/groupStore';
 import { encryptAtRest, decryptAtRest } from '../storage/atRestCrypto';
+import { groupAdminKeyManager, ADMIN_CONTROLLED_TYPES } from './groupAdminKeyManager';
 
 const KEY_SIZE = 32;
 const MAX_OLD_KEYS_TO_KEEP = 10;
@@ -291,6 +292,69 @@ export class GroupKeyManager {
         }
       };
     });
+  }
+
+  // ---- Admin signing integration ----
+
+  /**
+   * Sign a control-type envelope as admin and return it with adminSignature populated.
+   * Must be called on the sending side before transmitting the envelope.
+   */
+  async signEnvelope(envelope: GroupMessageEnvelopeWeb): Promise<GroupMessageEnvelopeWeb> {
+    if (!ADMIN_CONTROLLED_TYPES.has(envelope.type)) {
+      throw new Error(`signEnvelope called on non-admin type ${envelope.type}`);
+    }
+    const rawSig = await groupAdminKeyManager.signControlMessage(
+      envelope.groupId,
+      envelope.type,
+      envelope.senderId,
+      envelope.timestamp,
+      envelope.content ?? ''
+    );
+    const adminSignature = this.uint8ArrayToBase64(rawSig);
+
+    let adminPublicKey: string | undefined;
+    if (envelope.type === 'KEY_ROTATION' || envelope.type === 'ADMIN_CHANGE') {
+      const spki = await groupAdminKeyManager.getPublicKey(envelope.groupId);
+      if (spki) adminPublicKey = this.uint8ArrayToBase64(spki);
+    }
+
+    return { ...envelope, adminSignature, adminPublicKey };
+  }
+
+  /**
+   * Verify the adminSignature on a received control envelope.
+   *
+   * [storedAdminPublicKey] is the base64 SPKI stored on the local Group record.
+   * If null (first message from a new group), envelope.adminPublicKey is used
+   * and must be stored by the caller before trusting further messages.
+   */
+  async verifyEnvelope(
+    envelope: GroupMessageEnvelopeWeb,
+    storedAdminPublicKey?: string
+  ): Promise<boolean> {
+    if (!envelope.adminSignature) return false;
+    let rawSig: Uint8Array;
+    try {
+      rawSig = this.base64ToUint8Array(envelope.adminSignature);
+    } catch { return false; }
+
+    const pubKeyBase64 = storedAdminPublicKey ?? envelope.adminPublicKey;
+    if (!pubKeyBase64) return false;
+    let pubKeyBytes: Uint8Array;
+    try {
+      pubKeyBytes = this.base64ToUint8Array(pubKeyBase64);
+    } catch { return false; }
+
+    return groupAdminKeyManager.verifyControlMessage(
+      pubKeyBytes,
+      envelope.type,
+      envelope.groupId,
+      envelope.senderId,
+      envelope.timestamp,
+      envelope.content ?? '',
+      rawSig
+    );
   }
 
   private uint8ArrayToBase64(bytes: Uint8Array): string {
