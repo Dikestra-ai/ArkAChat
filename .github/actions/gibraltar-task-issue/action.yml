@@ -1,0 +1,83 @@
+name: 'Gibraltar-Task Issue'
+description: 'Create or close a Gibraltar-Task when a CI job succeeds or fails'
+
+inputs:
+  status:
+    description: 'success or failure'
+    required: true
+  workflow:
+    description: 'Name of the CI workflow (e.g. "web", "android")'
+    required: true
+  area:
+    description: 'Gibraltar-Task area (backend, frontend, testing, etc.)'
+    required: false
+    default: 'testing'
+  run_url:
+    description: 'GitHub Actions run URL for the task body'
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Install Gibraltar-Task
+      shell: bash
+      run: |
+        if ! command -v gibraltar-task &>/dev/null; then
+          npm install -g @gibraltar/task 2>/dev/null || \
+          pip install gibraltar-task 2>/dev/null || \
+          true  # continue even if install fails — task creation is best-effort
+        fi
+
+    - name: Create task on failure
+      if: inputs.status == 'failure'
+      shell: bash
+      env:
+        WORKFLOW: ${{ inputs.workflow }}
+        AREA: ${{ inputs.area }}
+        RUN_URL: ${{ inputs.run_url }}
+      run: |
+        if ! command -v gibraltar-task &>/dev/null; then
+          echo "::warning::gibraltar-task not available, skipping task creation"
+          exit 0
+        fi
+
+        TITLE="CI failure: ${WORKFLOW} ($(date -u '+%Y-%m-%d %H:%M UTC'))"
+        BODY="Run: ${RUN_URL}"
+        COMMIT="${GITHUB_SHA:-unknown}"
+        REF="${GITHUB_REF_NAME:-unknown}"
+
+        # Ensure setup-001 exists as the root dependency
+        gibraltar-task init 2>/dev/null || true
+
+        # Check for an existing open task for this workflow's CI failures
+        EXISTING=$(gibraltar-task list 2>/dev/null | grep "CI failure: ${WORKFLOW}" | grep -v "✅" | head -1 | grep -o '[a-z]*-[0-9]*' | head -1)
+
+        if [ -n "$EXISTING" ]; then
+          echo "::notice::Existing CI failure task found: $EXISTING — not creating duplicate"
+        else
+          gibraltar-task create \
+            --title "$TITLE" \
+            --area "$AREA" \
+            --priority high \
+            --dependencies "setup-001" \
+            --estimate "1h" 2>/dev/null && echo "::notice::Gibraltar-Task created for CI failure" || \
+          echo "::warning::gibraltar-task create failed (non-fatal)"
+        fi
+
+    - name: Close task on success
+      if: inputs.status == 'success'
+      shell: bash
+      env:
+        WORKFLOW: ${{ inputs.workflow }}
+      run: |
+        if ! command -v gibraltar-task &>/dev/null; then
+          exit 0
+        fi
+
+        # Find open CI failure tasks for this workflow and mark them done
+        IDS=$(gibraltar-task list 2>/dev/null | grep "CI failure: ${WORKFLOW}" | grep -v "✅" | grep -o '[a-z]*-[0-9]*')
+        for ID in $IDS; do
+          gibraltar-task update status "$ID" done 2>/dev/null && \
+            echo "::notice::Closed CI task $ID (workflow fixed)" || true
+        done

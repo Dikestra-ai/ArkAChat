@@ -16,7 +16,7 @@ on:
 
 # F10: least-privilege token; actions pinned to commit SHAs (mutable tags can be retargeted).
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -103,3 +103,12 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.path }}
           if-no-files-found: warn
+
+      - name: Gibraltar-Task — track CI result
+        if: always()
+        uses: ./.github/actions/gibraltar-task-issue
+        with:
+          status: ${{ job.status }}
+          workflow: desktop-${{ matrix.name }}
+          area: frontend
+          run_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

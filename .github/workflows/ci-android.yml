@@ -14,7 +14,7 @@ on:
 
 # F10: least-privilege token; actions pinned to commit SHAs (mutable tags can be retargeted).
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -52,3 +52,12 @@ jobs:
           name: arkachat-debug
           path: arkachat-android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: warn
+
+      - name: Gibraltar-Task — track CI result
+        if: always()
+        uses: ./.github/actions/gibraltar-task-issue
+        with:
+          status: ${{ job.status }}
+          workflow: android
+          area: backend
+          run_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

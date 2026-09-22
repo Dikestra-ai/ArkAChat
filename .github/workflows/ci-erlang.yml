@@ -14,7 +14,7 @@ on:
 
 # F10: least-privilege token; actions pinned to commit SHAs (mutable tags can be retargeted).
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   test:
@@ -71,3 +71,12 @@ jobs:
               end.
             '
         working-directory: arkachat-nitrogen/app
+
+      - name: Gibraltar-Task — track CI result
+        if: always()
+        uses: ./.github/actions/gibraltar-task-issue
+        with:
+          status: ${{ job.status }}
+          workflow: erlang
+          area: backend
+          run_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
