@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -49,8 +50,35 @@ fun QRScannerScreen(
     var hasCameraPermission by remember { mutableStateOf(false) }
     var isProcessing by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    // Pending confirmation: (displayName, fingerprint, rawQrData) shown in dialog.
+    var pendingConfirmation by remember { mutableStateOf<Triple<String, String, String>?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+
+    // Fingerprint confirmation dialog — shown before the key is accepted.
+    val pending = pendingConfirmation
+    if (pending != null) {
+        FingerprintConfirmDialog(
+            displayName = pending.first,
+            fingerprint = pending.second,
+            onConfirm = {
+                pendingConfirmation = null
+                scope.launch {
+                    isProcessing = true
+                    errorMessage = null
+                    val result = viewModel.acceptInvitation(pending.third)
+                    result.fold(
+                        onSuccess = { onQRScanned(pending.third) },
+                        onFailure = {
+                            errorMessage = it.message
+                            isProcessing = false
+                        }
+                    )
+                }
+            },
+            onDismiss = { pendingConfirmation = null }
+        )
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -90,18 +118,15 @@ fun QRScannerScreen(
                 CameraPreviewWithScanner(
                     isProcessing = isProcessing,
                     onQRDetected = { rawValue ->
-                        if (!isProcessing) {
-                            scope.launch {
-                                isProcessing = true
-                                errorMessage = null
-                                val result = viewModel.acceptInvitation(rawValue)
-                                result.fold(
-                                    onSuccess = { onQRScanned(rawValue) },
-                                    onFailure = {
-                                        errorMessage = it.message
-                                        isProcessing = false
-                                    }
-                                )
+                        if (!isProcessing && pendingConfirmation == null) {
+                            // Parse the QR first and show fingerprint to the user
+                            // before accepting — prevents silent MITM key substitution.
+                            val parsed = viewModel.parseQRForConfirmation(rawValue)
+                            if (parsed != null) {
+                                val (displayName, fingerprint) = parsed
+                                pendingConfirmation = Triple(displayName, fingerprint, rawValue)
+                            } else {
+                                errorMessage = "Invalid QR code"
                             }
                         }
                     }
@@ -350,4 +375,50 @@ private fun decodeQR(
         reader.reset()
         imageProxy.close()
     }
+}
+
+/**
+ * Modal dialog shown after QR scan but BEFORE accepting. Displays the contact's
+ * claimed display name and a short key fingerprint so the user can verify
+ * out-of-band that no MITM substituted a different public key.
+ */
+@Composable
+private fun FingerprintConfirmDialog(
+    displayName: String,
+    fingerprint: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Verify Contact") },
+        text = {
+            Column {
+                Text("Connect with ${displayName.ifBlank { "Unknown" }}?")
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "Key fingerprint:",
+                    style = MaterialTheme.typography.labelMedium
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = fingerprint,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontFamily = FontFamily.Monospace
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "Ask the other person to read you the fingerprint shown on their device. Only connect if it matches exactly.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text("Connect") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }

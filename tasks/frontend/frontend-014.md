@@ -1,7 +1,7 @@
 ---
 id: frontend-014
 title: 'SEC: Android notification leaks plaintext message body, ignores KEY_SHOW_PREVIEW setting'
-status: todo
+status: done
 priority: medium
 tags:
 - frontend

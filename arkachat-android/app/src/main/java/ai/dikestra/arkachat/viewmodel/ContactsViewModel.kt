@@ -52,6 +52,25 @@ class ContactsViewModel(
         }
     }
 
+    /**
+     * Parse a QR invitation and return the displayName + key fingerprint for
+     * the user to verify BEFORE we accept and store the contact. This prevents
+     * a MITM from silently substituting a different key while the user scans.
+     *
+     * Returns (displayName, shortFingerprint) or null if the QR is malformed.
+     */
+    fun parseQRForConfirmation(qrData: String): Pair<String, String>? {
+        return try {
+            val inv = ai.dikestra.arkachat.network.SMPInvitation.fromJson(qrData) ?: return null
+            val sha256 = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(inv.shieldKey)
+            val fingerprint = sha256.take(8)
+                .joinToString(":") { "%02x".format(it) }
+                .uppercase()
+            inv.displayName to fingerprint
+        } catch (_: Exception) { null }
+    }
+
     suspend fun acceptInvitation(qrData: String): Result<Contact> {
         return try {
             val contact = bridge.acceptInvitation(qrData)

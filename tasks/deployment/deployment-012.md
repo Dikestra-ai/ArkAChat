@@ -1,7 +1,7 @@
 ---
 id: deployment-012
 title: 'SEC: Proxy replay_ttl_secs=60 — excessively wide replay window for interactive messaging'
-status: todo
+status: done
 priority: medium
 tags:
 - deployment

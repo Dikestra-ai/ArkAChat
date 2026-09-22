@@ -401,11 +401,23 @@ export class WebSimplexClient {
 
   /**
    * Accept a connection invitation (from QR code scan).
+   *
+   * The server hostname in the QR code is validated against the known-good
+   * SMP server list before connecting. This prevents a malicious QR code from
+   * redirecting the client to an attacker-controlled WebSocket endpoint.
    */
   async acceptInvitation(invitation: SMPInvitation): Promise<SMPQueueAddress> {
     const queue = decodeQueueUri(invitation.connReqUri);
     if (!queue) {
       throw new Error('Invalid connection request URI');
+    }
+
+    // Validate server against allow-list.
+    if (!PUBLIC_SMP_SERVERS.includes(queue.server)) {
+      throw new Error(
+        `QR code specifies untrusted SMP server: "${queue.server}". ` +
+        `Only the following servers are accepted: ${PUBLIC_SMP_SERVERS.join(', ')}`
+      );
     }
 
     // Connect to the server if not already connected
@@ -497,19 +509,25 @@ export class WebSimplexClient {
       pending.resolve(payload);
     }
 
-    // Handle push messages
+    // Handle push messages.
+    // Server push format (binary SMP): CMD_MSG | queueId(24) | msgId(24) | ciphertext
+    // The queueId field lets a single WebSocket connection serve multiple queues
+    // on the same server without misrouting messages between contacts.
     if (payload.length > 0 && payload[0] === CMD_MSG) {
-      const msgIdStart = 1;
-      const msgIdEnd = msgIdStart + 24;
+      const queueIdStart = 1;
+      const queueIdEnd = queueIdStart + QUEUE_ID_SIZE;
+      const msgIdStart = queueIdEnd;
+      const msgIdEnd = msgIdStart + QUEUE_ID_SIZE;
       const ciphertextStart = msgIdEnd;
 
       if (payload.length > ciphertextStart) {
+        const queueId = payload.slice(queueIdStart, queueIdEnd);
         const msgId = payload.slice(msgIdStart, msgIdEnd);
         const ciphertext = payload.slice(ciphertextStart);
 
-        // Find the queue this message belongs to
-        const queue = Array.from(this.subscribedQueues.values())
-          .find((q) => q.server === server);
+        // Look up the exact subscribed queue by server + queueId.
+        const key = `${server}:${toHex(queueId)}`;
+        const queue = this.subscribedQueues.get(key);
 
         if (queue) {
           const message: SMPMessage = {
@@ -858,15 +876,24 @@ class SmartSimplexClient implements ISimplexClient {
   private impl: ISimplexClient = this.smp;
 
   async connect(servers?: string[]): Promise<void> {
-    try {
-      await this.relay.connect();
-      this.impl = this.relay;
-      console.log('[simplex] Using local relay at', relayUrl());
-    } catch {
-      await this.smp.connect(servers);
-      this.impl = this.smp;
-      console.log('[simplex] Using public SMP servers');
+    // Only attempt the local relay in development. In production the relay URL
+    // uses ws:// (cleartext) and is blocked by the production CSP anyway, but
+    // we also block it here to avoid the connection attempt and the console log
+    // that could mislead operators into thinking the relay is in use.
+    const isDev = process.env.NODE_ENV !== 'production';
+    if (isDev) {
+      try {
+        await this.relay.connect();
+        this.impl = this.relay;
+        console.log('[simplex] Using local relay at', relayUrl());
+        return;
+      } catch {
+        // relay not running — fall through to public SMP
+      }
     }
+    await this.smp.connect(servers);
+    this.impl = this.smp;
+    console.log('[simplex] Using public SMP servers');
   }
 
   disconnect() { return this.impl.disconnect(); }

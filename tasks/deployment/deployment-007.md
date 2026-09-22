@@ -1,7 +1,7 @@
 ---
 id: deployment-007
 title: 'SEC: Proxy DNS leaks SimpleX relay lookups to Google/Cloudflare via plaintext port-53'
-status: todo
+status: done
 priority: medium
 tags:
 - deployment

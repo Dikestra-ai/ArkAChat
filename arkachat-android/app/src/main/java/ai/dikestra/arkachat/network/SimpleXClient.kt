@@ -98,7 +98,8 @@ data class SMPInvitation(
     val timestamp: Long
 ) {
     fun toJson(): String {
-        return """{"uri":"$connReqUri","k":"${shieldKey.toBase64Url()}","n":"$displayName","ts":$timestamp}"""
+        fun String.j() = replace("\\", "\\\\").replace("\"", "\\\"")
+        return """{"uri":"${connReqUri.j()}","k":"${shieldKey.toBase64Url()}","n":"${displayName.j()}","ts":$timestamp}"""
     }
 
     companion object {

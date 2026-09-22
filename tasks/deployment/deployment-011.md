@@ -1,7 +1,7 @@
 ---
 id: deployment-011
 title: 'SEC: Proxy docker-compose lacks resource limits, capability drops, and DoS hardening'
-status: todo
+status: done
 priority: medium
 tags:
 - deployment

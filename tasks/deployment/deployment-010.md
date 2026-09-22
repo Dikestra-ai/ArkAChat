@@ -1,7 +1,7 @@
 ---
 id: deployment-010
 title: 'SEC: Proxy Docker runs as root, broken healthcheck, unpinned base images'
-status: todo
+status: done
 priority: medium
 tags:
 - deployment
