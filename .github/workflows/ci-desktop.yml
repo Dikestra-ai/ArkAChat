@@ -16,7 +16,7 @@ on:
 
 # F10: least-privilege token; actions pinned to commit SHAs (mutable tags can be retargeted).
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:

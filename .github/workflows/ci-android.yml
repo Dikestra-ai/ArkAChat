@@ -13,8 +13,11 @@ on:
       - '.github/workflows/ci-android.yml'
 
 # F10: least-privilege token; actions pinned to commit SHAs (mutable tags can be retargeted).
+# attestations + id-token are required for SLSA provenance attestation on uploaded artifacts.
 permissions:
-  contents: write
+  contents: read
+  attestations: write
+  id-token: write
 
 jobs:
   build:
@@ -52,11 +55,22 @@ jobs:
         working-directory: arkachat-android
 
       - name: Upload APK
+        id: upload-apk
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: arkachat-debug
           path: arkachat-android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: warn
+
+      # SLSA build provenance: ties the artifact to this exact commit + build
+      # environment, enabling users to verify the APK was produced by this
+      # workflow and was not substituted in transit. Verifiable with:
+      #   gh attestation verify app-debug.apk --repo Dikestra-ai/ArkAChat
+      - name: Attest build provenance
+        if: steps.upload-apk.outputs.artifact-id != ''
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-path: arkachat-android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Gibraltar-Task — track CI result
         if: always()
