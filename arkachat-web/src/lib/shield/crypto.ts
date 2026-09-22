@@ -93,16 +93,17 @@ export class RatchetSession {
     const wasmSession = new WasmRatchetSession(state.rootKey, state.isInitiator);
     const session = new RatchetSession(wasmSession);
 
-    // Fast-forward the send KDF chain so our next encrypt uses the correct key
+    // Fast-forward the send KDF chain so our next encrypt uses the correct key.
     const dummy = new Uint8Array(1);
     for (let i = 0; i < state.sendCounter; i++) {
       session.wasmSession.encrypt(dummy);
     }
     session._sendCounter = state.sendCounter;
-    // recvCounter cannot be restored without ciphertexts; new incoming messages
-    // after reload will decrypt correctly as long as the remote also reloaded,
-    // or as long as no messages arrived while we were offline.
-    session._recvCounter = 0;
+    // Restore the receive counter so callers see the right position. The WASM
+    // receive chain itself cannot be fast-forwarded without valid ciphertexts,
+    // so messages the remote sent while we were offline will fail to decrypt
+    // until WebShieldCrypto's pending-message retry loop resolves them.
+    session._recvCounter = state.recvCounter;
 
     return session;
   }
@@ -309,6 +310,10 @@ interface StoredSessionRecord {
  */
 export class WebShieldCrypto {
   private sessions = new Map<string, { session: RatchetSession; rootKey: Uint8Array; isInitiator: boolean }>();
+  // Ciphertexts that failed to decrypt (likely arrived out of order). After
+  // each successful decrypt we retry these — the chain may have caught up.
+  // Key = contactId, value = list of pending raw ciphertexts.
+  private pendingDecrypt = new Map<string, Uint8Array[]>();
 
   /**
    * Get or create a RatchetSession for a contact.
@@ -345,6 +350,11 @@ export class WebShieldCrypto {
     const session = await this.getSession(contactId, isInitiator);
     const plaintext = new TextEncoder().encode(message);
     const padded = pad(plaintext);
+    // Persist sendCounter + 1 BEFORE encrypting. If the browser crashes after
+    // this write but before the message is sent, we skip one counter slot
+    // (message lost, no harm). Without this, a crash after encrypt() but before
+    // saveSession() would let the next session replay counter N for a NEW message.
+    await this.saveSessionWithSendCounterOffset(contactId, 1);
     const ciphertext = await session.encrypt(padded);
     await this.saveSession(contactId);
     return ciphertext;
@@ -352,16 +362,57 @@ export class WebShieldCrypto {
 
   /**
    * Decrypt a message from a contact.
+   * When decryption fails (likely out-of-order delivery), the ciphertext is
+   * queued and retried after each future successful decryption that advances
+   * the chain. This handles mild message reordering without library changes.
    */
   async decryptMessage(contactId: string, isInitiator: boolean, ciphertext: Uint8Array): Promise<string> {
     const session = await this.getSession(contactId, isInitiator);
     const padded = await session.decrypt(ciphertext);
     if (!padded) {
-      throw new Error('Decryption failed');
+      // Chain not advanced — buffer for retry once a later message catches it up.
+      const queue = this.pendingDecrypt.get(contactId) ?? [];
+      queue.push(ciphertext);
+      this.pendingDecrypt.set(contactId, queue);
+      throw new Error('Message decryption failed — queued for retry');
     }
     const plaintext = unpad(padded);
     await this.saveSession(contactId);
+    // Retry any previously buffered messages now that the chain has advanced.
+    await this.retryPending(contactId, isInitiator);
     return new TextDecoder().decode(plaintext);
+  }
+
+  /**
+   * Attempt to decrypt any queued ciphertexts that failed earlier.
+   * Dispatches a custom event per successfully recovered message so the UI
+   * can re-render without the caller needing to poll.
+   */
+  private async retryPending(contactId: string, isInitiator: boolean): Promise<void> {
+    const queue = this.pendingDecrypt.get(contactId);
+    if (!queue || queue.length === 0) return;
+
+    const session = await this.getSession(contactId, isInitiator);
+    const remaining: Uint8Array[] = [];
+    for (const pending of queue) {
+      const result = await session.decrypt(pending);
+      if (result) {
+        await this.saveSession(contactId);
+        // Fire an event so consumers (e.g. the message store) can surface it.
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('arkachat:recovered-message', {
+            detail: { contactId, plaintext: new TextDecoder().decode(unpad(result)) },
+          }));
+        }
+      } else {
+        remaining.push(pending);
+      }
+    }
+    if (remaining.length > 0) {
+      this.pendingDecrypt.set(contactId, remaining);
+    } else {
+      this.pendingDecrypt.delete(contactId);
+    }
   }
 
   /**
@@ -506,6 +557,13 @@ export class WebShieldCrypto {
   }
 
   private async saveSession(contactId: string): Promise<void> {
+    return this.saveSessionWithSendCounterOffset(contactId, 0);
+  }
+
+  // Save session state, with sendCounter bumped by `offset`. Pass offset=1
+  // before encrypting to prevent replay if the browser crashes between
+  // the encrypt() call and the subsequent saveSession() call.
+  private async saveSessionWithSendCounterOffset(contactId: string, offset: number): Promise<void> {
     const existing = this.sessions.get(contactId);
     if (!existing) return;
 
@@ -519,7 +577,7 @@ export class WebShieldCrypto {
         id: contactId,
         wrappedRootKey: Array.from(wrappedRootKey),
         isInitiator: existing.isInitiator,
-        sendCounter: existing.session.sendCounter,
+        sendCounter: existing.session.sendCounter + offset,
         recvCounter: existing.session.recvCounter,
       });
       request.onsuccess = () => resolve();

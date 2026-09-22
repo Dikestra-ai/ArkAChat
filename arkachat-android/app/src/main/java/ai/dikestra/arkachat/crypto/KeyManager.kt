@@ -11,8 +11,13 @@ class KeyManager(context: Context) {
 
     private val secureKeyStore = SecureKeyStore(context)
 
+    // Track every key alias we write so deleteAllKeys() can purge them all.
+    // Using a synchronized set so concurrent storeKey / deleteAllKeys calls are safe.
+    private val storedKeyIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
     fun storeKey(keyId: String, key: ByteArray) {
         secureKeyStore.storeKey(keyId, key)
+        storedKeyIds.add(keyId)
     }
 
     fun retrieveKey(keyId: String): ByteArray? {
@@ -25,10 +30,15 @@ class KeyManager(context: Context) {
 
     fun deleteKey(keyId: String) {
         secureKeyStore.deleteKey(keyId)
+        storedKeyIds.remove(keyId)
     }
 
     fun deleteAllKeys() {
-        // SecureKeyStore doesn't have a clear-all method, so we track keys we create
-        // For now, this is a no-op - in production we'd track stored key aliases
+        // Copy the set to avoid ConcurrentModificationException during iteration.
+        val ids = storedKeyIds.toList()
+        for (id in ids) {
+            secureKeyStore.deleteKey(id)
+        }
+        storedKeyIds.clear()
     }
 }

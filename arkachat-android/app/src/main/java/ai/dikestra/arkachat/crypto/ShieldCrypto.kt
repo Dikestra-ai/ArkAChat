@@ -23,6 +23,11 @@ class ShieldCrypto(private val context: Context) {
     private val keyManager = KeyManager(context)
     private val sessions = ConcurrentHashMap<String, RatchetSession>()
 
+    // Ciphertexts that couldn't be decrypted yet (likely arrived out-of-order).
+    // After each successful decrypt we retry these — if the chain has advanced
+    // to the right position the message will succeed. Keyed by contactId.
+    private val pendingDecrypt = ConcurrentHashMap<String, MutableList<ByteArray>>()
+
     /**
      * Get or create a RatchetSession for a contact.
      */
@@ -46,12 +51,55 @@ class ShieldCrypto(private val context: Context) {
 
     /**
      * Decrypt a message using the contact's RatchetSession.
+     *
+     * If decryption fails (e.g. the message arrived out of order), the
+     * ciphertext is buffered and retried after each future successful
+     * decryption that advances the chain. Recovered plaintexts are returned
+     * via the [onRecover] callback so callers can surface them to the UI.
      */
-    fun decryptMessage(contactId: String, isInitiator: Boolean, ciphertext: ByteArray): String {
+    fun decryptMessage(
+        contactId: String,
+        isInitiator: Boolean,
+        ciphertext: ByteArray,
+        onRecover: ((String) -> Unit)? = null
+    ): String {
         val session = getSession(contactId, isInitiator)
-        val padded = session.decrypt(ciphertext)
-        val plaintext = MessagePadding.unpad(padded)
-        return String(plaintext, Charsets.UTF_8)
+        val padded = try {
+            session.decrypt(ciphertext)
+        } catch (e: Exception) {
+            // Chain not advanced on failure — buffer for later retry.
+            pendingDecrypt.getOrPut(contactId) { mutableListOf() }.add(ciphertext)
+            throw IllegalStateException("Decrypt failed, queued for retry", e)
+        }
+        val plaintext = String(MessagePadding.unpad(padded), Charsets.UTF_8)
+        retryPending(contactId, isInitiator, onRecover)
+        return plaintext
+    }
+
+    private fun retryPending(
+        contactId: String,
+        isInitiator: Boolean,
+        onRecover: ((String) -> Unit)?
+    ) {
+        val queue = pendingDecrypt[contactId] ?: return
+        val remaining = mutableListOf<ByteArray>()
+        val session = getSession(contactId, isInitiator)
+        for (pending in queue) {
+            val recovered = try {
+                session.decrypt(pending)
+            } catch (_: Exception) { null }
+            if (recovered != null) {
+                val text = String(MessagePadding.unpad(recovered), Charsets.UTF_8)
+                onRecover?.invoke(text)
+            } else {
+                remaining.add(pending)
+            }
+        }
+        if (remaining.isEmpty()) {
+            pendingDecrypt.remove(contactId)
+        } else {
+            pendingDecrypt[contactId] = remaining
+        }
     }
 
     /**
