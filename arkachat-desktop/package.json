@@ -22,13 +22,15 @@
     "keytar": "^7.9.0"
   },
   "devDependencies": {
-    "electron": "^28.0.0",
-    "electron-builder": "^24.9.0"
+    "@electron/fuses": "^1.8.0",
+    "electron": "^34.0.0",
+    "electron-builder": "^25.1.8"
   },
   "build": {
     "appId": "ai.dikestra.arkachat",
     "productName": "ArkAChat",
     "forceCodeSigning": false,
+    "afterPack": "./main/afterPack.js",
     "publish": {
       "provider": "github",
       "owner": "Dikestra-ai",
@@ -40,6 +42,9 @@
     "files": [
       "main/**/*",
       "renderer/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/keytar/**"
     ],
     "mac": {
       "category": "public.app-category.social-networking",
