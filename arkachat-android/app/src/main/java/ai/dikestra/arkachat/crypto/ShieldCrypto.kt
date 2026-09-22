@@ -23,6 +23,10 @@ class ShieldCrypto(private val context: Context) {
     private val keyManager = KeyManager(context)
     private val sessions = ConcurrentHashMap<String, RatchetSession>()
 
+    // Tracks all temp files produced by decryptFileToCache() so clearDecryptedCache()
+    // can wipe them. CopyOnWriteArrayList is safe for concurrent add/remove.
+    private val tempDecryptedFiles = java.util.concurrent.CopyOnWriteArrayList<java.io.File>()
+
     // Ciphertexts that couldn't be decrypted yet (likely arrived out-of-order).
     // After each successful decrypt we retry these — if the chain has advanced
     // to the right position the message will succeed. Keyed by contactId.
@@ -115,7 +119,9 @@ class ShieldCrypto(private val context: Context) {
     }
 
     /**
-     * Decrypt a file using StreamCipher.
+     * Decrypt a file using StreamCipher into [outputFile].
+     * Prefer [decryptFileToCache] when displaying files — it registers
+     * the plaintext for automatic cleanup by [clearDecryptedCache].
      */
     fun decryptFile(contactId: String, inputFile: File, outputFile: File) {
         val mediaKey = keyManager.retrieveKey("media_key_$contactId")
@@ -123,6 +129,52 @@ class ShieldCrypto(private val context: Context) {
 
         StreamCipher.create(mediaKey).use { cipher ->
             cipher.decryptFile(inputFile.absolutePath, outputFile.absolutePath)
+        }
+    }
+
+    /**
+     * Decrypt [inputFile] into a temp file under cacheDir/decrypted/.
+     * The returned file is tracked and deleted by [clearDecryptedCache].
+     * Call [clearDecryptedCache] from onStop to ensure plaintext files are
+     * not left on disk after the user navigates away from a file-viewer screen.
+     */
+    fun decryptFileToCache(contactId: String, inputFile: File, suffix: String = ""): File {
+        val cacheDir = File(context.cacheDir, "decrypted").also { it.mkdirs() }
+        val tmpFile = File.createTempFile("plain_", suffix, cacheDir)
+        try {
+            decryptFile(contactId, inputFile, tmpFile)
+        } catch (e: Exception) {
+            tmpFile.delete()
+            throw e
+        }
+        tempDecryptedFiles.add(tmpFile)
+        return tmpFile
+    }
+
+    /**
+     * Overwrite-then-delete all plaintext temp files from [decryptFileToCache].
+     * Call from Activity.onStop / onPause so plaintext never persists after
+     * the user leaves the file viewer.
+     */
+    fun clearDecryptedCache() {
+        val toDelete = tempDecryptedFiles.toList()
+        tempDecryptedFiles.clear()
+        for (f in toDelete) {
+            if (!f.exists()) continue
+            try {
+                // Best-effort overwrite with zeros before delete to reduce
+                // undelete risk (not a guarantee against journaling filesystems).
+                f.outputStream().use { out ->
+                    val zeros = ByteArray(4096)
+                    var remaining = f.length()
+                    while (remaining > 0) {
+                        val chunk = minOf(remaining, 4096L).toInt()
+                        out.write(zeros, 0, chunk)
+                        remaining -= chunk
+                    }
+                }
+            } catch (_: Exception) {}
+            f.delete()
         }
     }
 
