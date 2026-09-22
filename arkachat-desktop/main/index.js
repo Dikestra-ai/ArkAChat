@@ -50,6 +50,7 @@ function buildCsp() {
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'none'",
+    "frame-src 'none'",
     "frame-ancestors 'none'",
   ].join('; ');
 }
@@ -178,9 +179,25 @@ function createTray() {
 const KEY_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/;
 const MAX_KEY_BYTES = 8192;
 
+// Allow-listed key-ID prefixes. The renderer may only read/write keys whose
+// IDs start with one of these strings. This limits the blast radius of a
+// renderer XSS: an attacker that can call ipcRenderer.invoke('keystore:*')
+// is restricted to the known per-contact key namespace and cannot enumerate
+// or overwrite arbitrary secrets even with a valid-format key ID.
+const KEY_ID_ALLOWED_PREFIXES = [
+  'shared_key_',
+  'media_key_',
+  'session_key_',
+  'device_key_',
+];
+
 function assertValidKeyId(keyId) {
   if (typeof keyId !== 'string' || !KEY_ID_PATTERN.test(keyId)) {
     throw new Error('keystore: invalid keyId');
+  }
+  const allowed = KEY_ID_ALLOWED_PREFIXES.some(p => keyId.startsWith(p));
+  if (!allowed) {
+    throw new Error(`keystore: keyId must start with one of: ${KEY_ID_ALLOWED_PREFIXES.join(', ')}`);
   }
 }
 
