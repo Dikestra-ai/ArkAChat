@@ -42,6 +42,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      # Allow time for the proxy to bind ports and load its Shield key store
+      # before the first health probe fires.
+      start_period: 15s
     networks:
       - shield
 
@@ -54,6 +57,7 @@ services:
     # virtual_ip in upstream shield-proxy). Publishing 8443 here would conflict
     # with the active node on a single host.
     expose:
+      - "8443"
       - "8444/udp"
     volumes:
       - ./shield-proxy-standby.toml.template:/etc/shield-proxy/config.toml.template:ro
@@ -63,7 +67,11 @@ services:
       - .env
     environment:
       RUST_LOG: info
-    restart: on-failure
+    # Longer restart delay on failure so Docker doesn't thrash during active-node
+    # startup (the standby depends_on the active being healthy, but a race between
+    # peer-connection establishment and the first healthcheck can still cause
+    # transient failures right after first boot).
+    restart: on-failure:5
     read_only: true
     cap_drop:
       - ALL
@@ -73,10 +81,15 @@ services:
     mem_limit: 512m
     cpus: 2.0
     healthcheck:
+      # The standby listens on 8443 in hot-standby mode (bound but not published
+      # to the host). Probe the container-local address. Use retries=5 + a
+      # generous start_period because the standby needs time to establish a
+      # redundancy-heartbeat connection to the active node.
       test: ["CMD", "/bin/bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8443 && exec 3<&- 3>&-"]
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
+      start_period: 30s
     depends_on:
       shield-proxy-active:
         condition: service_healthy
