@@ -28,7 +28,7 @@
   "build": {
     "appId": "ai.dikestra.arkachat",
     "productName": "ArkAChat",
-    "forceCodeSigning": true,
+    "forceCodeSigning": false,
     "publish": {
       "provider": "github",
       "owner": "Dikestra-ai",
