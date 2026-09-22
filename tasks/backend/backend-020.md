@@ -1,7 +1,7 @@
 ---
 id: backend-020
 title: 'SEC: Apply web.patch — HIGH CSP/headers, group sender auth, AES-GCM at-rest encryption, relay allowlist'
-status: todo
+status: done
 priority: high
 tags:
 - backend

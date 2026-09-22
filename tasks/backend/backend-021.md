@@ -1,7 +1,7 @@
 ---
 id: backend-021
 title: 'SEC: Wire up dead Android native stack — replace cleartext WebView shell with ArkAChatNavigation + TrafficObfuscator + SimpleXClient'
-status: todo
+status: done
 priority: critical
 tags:
 - backend

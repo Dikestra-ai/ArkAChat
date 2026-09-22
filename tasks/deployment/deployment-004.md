@@ -1,7 +1,7 @@
 ---
 id: deployment-004
 title: 'SEC: Apply proxy-infra.patch — CRIT PSK literal unexpanded, HIGH metrics/DNS exposure, CI signing'
-status: todo
+status: done
 priority: critical
 tags:
 - deployment

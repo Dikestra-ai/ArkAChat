@@ -1,7 +1,7 @@
 ---
 id: backend-019
 title: 'SEC: Apply android.patch — CRIT media-file KDF, HIGH group-auth, WebView hardening, replay freshness'
-status: todo
+status: done
 priority: critical
 tags:
 - backend

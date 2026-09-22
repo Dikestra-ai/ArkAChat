@@ -1,7 +1,7 @@
 ---
 id: frontend-019
 title: 'SEC: Erlang XSS via page:title() template slot — raw user-controlled contact/group name injected'
-status: todo
+status: done
 priority: medium
 tags:
 - frontend

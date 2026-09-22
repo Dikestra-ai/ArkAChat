@@ -340,7 +340,7 @@ private fun decodeQR(
         )
         val bitmap = BinaryBitmap(HybridBinarizer(source))
         val result = reader.decodeWithState(bitmap)
-        Log.i(TAG, "DECODED: ${result.text}")
+        Log.i(TAG, "DECODED: QR code (${result.text.length} chars)")
         onQRDetected(result.text)
     } catch (e: com.google.zxing.NotFoundException) {
         // Normal — no QR in this frame

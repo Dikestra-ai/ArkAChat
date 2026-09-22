@@ -1,7 +1,7 @@
 ---
 id: backend-031
 title: 'SEC: Erlang LOW — list_to_atom on user bot-id, status bot info disclosure, export_all, hex_to_bin no length check'
-status: todo
+status: done
 priority: low
 tags:
 - backend

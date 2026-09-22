@@ -19,6 +19,7 @@ import ai.dikestra.arkachat.network.SMPInvitation
 import ai.dikestra.arkachat.network.SMPMessage
 import ai.dikestra.arkachat.network.SMPQueueAddress
 import ai.dikestra.arkachat.network.SimpleXClient
+import ai.dikestra.arkachat.network.TrafficObfuscator
 import ai.dikestra.shield.QRExchange
 import ai.dikestra.shield.ShieldUtils
 import ai.dikestra.arkachat.storage.EncryptedFile
@@ -105,6 +106,9 @@ class ShieldSimplexBridge(
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val json = Json { ignoreUnknownKeys = true }
 
+    // Traffic obfuscator — sends dummy messages to mask real communication patterns.
+    val trafficObfuscator = TrafficObfuscator(shieldCrypto, simplexClient, scope)
+
     // Contact queue mappings
     private val contactQueues = mutableMapOf<String, SMPQueueAddress>()
 
@@ -150,6 +154,17 @@ class ShieldSimplexBridge(
         scope.launch {
             simplexClient.receiveMessages().collect { smpMessage ->
                 handleIncomingMessage(smpMessage)
+            }
+        }
+
+        // Start traffic obfuscation for contacts with established SMP queues.
+        // Contacts added via web QR may not have a queue yet — skip them silently.
+        scope.launch {
+            contactDao.getContactsWithQueue().forEach { contact ->
+                try {
+                    val queue = SMPQueueAddress.fromUri(contact.simplexQueueUri) ?: return@forEach
+                    trafficObfuscator.startForContact(contact.id, queue, contact.isInitiator)
+                } catch (_: Exception) {}
             }
         }
     }
@@ -213,6 +228,22 @@ class ShieldSimplexBridge(
         )
 
         contactDao.insert(contact)
+
+        // Begin traffic obfuscation once a pairwise SMP queue is established.
+        // acceptInvitation currently returns contacts with no queue (queue is
+        // agreed out-of-band after the Shield key exchange); when the queue is
+        // set later, the caller is responsible for calling
+        // trafficObfuscator.startForContact(). For the common case where the
+        // queue is embedded in the QR data this start is a no-op (empty URI).
+        contact.simplexQueueUri.takeIf { it.isNotEmpty() }?.let { uri ->
+            try {
+                val queue = SMPQueueAddress.fromUri(uri)
+                if (queue != null) {
+                    trafficObfuscator.startForContact(contact.id, queue, contact.isInitiator)
+                }
+            } catch (_: Exception) {}
+        }
+
         return contact
     }
 

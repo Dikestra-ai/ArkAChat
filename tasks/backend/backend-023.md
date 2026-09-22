@@ -1,7 +1,7 @@
 ---
 id: backend-023
 title: 'SEC: Android SMP frame parser crashes on malformed server frame (OOB / DoS)'
-status: todo
+status: done
 priority: medium
 tags:
 - backend

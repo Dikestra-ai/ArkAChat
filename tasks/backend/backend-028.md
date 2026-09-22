@@ -1,7 +1,7 @@
 ---
 id: backend-028
 title: 'SEC: Android unvalidated metadataLength in EncryptedFileStorage.readHeader — OOM/crash DoS on import'
-status: todo
+status: done
 priority: medium
 tags:
 - backend

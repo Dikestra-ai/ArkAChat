@@ -1,7 +1,7 @@
 ---
 id: backend-024
 title: 'SEC: Android TrafficObfuscator never started and lacks size normalization'
-status: todo
+status: done
 priority: medium
 tags:
 - backend

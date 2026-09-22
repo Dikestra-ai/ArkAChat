@@ -1,7 +1,7 @@
 ---
 id: deployment-006
 title: 'SEC: Erlang sync hot-reloader and dev_mode shipped in release build'
-status: todo
+status: done
 priority: medium
 tags:
 - deployment

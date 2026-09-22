@@ -1,7 +1,7 @@
 ---
 id: backend-018
 title: 'SEC: Apply erlang.patch — CRIT hardcoded distribution cookie RCE + HIGH key fail-closed/redaction'
-status: todo
+status: done
 priority: critical
 tags:
 - backend

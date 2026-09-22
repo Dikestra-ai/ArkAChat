@@ -1,7 +1,7 @@
 ---
 id: auth-006
 title: 'SEC: Erlang no authentication/authorization — shared guest identity, public ETS, any user reads all conversations'
-status: todo
+status: done
 priority: medium
 tags:
 - auth

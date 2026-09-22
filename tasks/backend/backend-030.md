@@ -1,7 +1,7 @@
 ---
 id: backend-030
 title: 'SEC: Erlang debug_crash_handler leaks stack traces and process state to browser'
-status: todo
+status: done
 priority: medium
 tags:
 - backend

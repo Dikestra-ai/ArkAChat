@@ -524,7 +524,8 @@ class SimpleXClient(
             val msgIdEnd = msgIdStart + 24
             val ciphertextStart = msgIdEnd
 
-            if (data.size > ciphertextStart) {
+            // Bounds check against payload (not data) to prevent OOB on malformed frames.
+            if (payload.size > ciphertextStart) {
                 val msgId = payload.sliceArray(msgIdStart until msgIdEnd)
                 val ciphertext = payload.sliceArray(ciphertextStart until payload.size)
 

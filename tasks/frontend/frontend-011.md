@@ -1,7 +1,7 @@
 ---
 id: frontend-011
 title: 'SEC: Apply desktop.patch — HIGH renderer CSP, delete no-op cert-pinning, fail-closed updater, sandbox:true'
-status: todo
+status: done
 priority: high
 tags:
 - frontend

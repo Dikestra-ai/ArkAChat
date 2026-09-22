@@ -1,7 +1,7 @@
 ---
 id: backend-025
 title: 'SEC: Android sensitive data in logcat — QR key material and SMP URLs logged unconditionally'
-status: todo
+status: done
 priority: medium
 tags:
 - backend

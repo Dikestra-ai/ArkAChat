@@ -61,4 +61,7 @@ interface ContactDao {
 
     @Query("SELECT COUNT(*) FROM contacts")
     suspend fun getTotalContactCount(): Int
+
+    @Query("SELECT * FROM contacts WHERE isBlocked = 0 AND simplexQueueUri != ''")
+    suspend fun getContactsWithQueue(): List<Contact>
 }
