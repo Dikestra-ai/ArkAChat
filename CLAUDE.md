@@ -96,13 +96,79 @@ arkachat-desktop/              # Desktop app (Electron)
 
 ## Task Management
 
-TaskGuard is active in this project. See `AGENTIC_AI_TASKGUARD_GUIDE.md` for workflow.
-- View tasks: `taskguard list`
-- Create task: `taskguard create`
-- Validate dependencies: `taskguard validate`
+Gibraltar-Task is active (migrated from TaskGuard). See `AGENTIC_AI_TASKGUARD_GUIDE.md`.
+- View tasks: `gibraltar-task list`
+- Create task: `gibraltar-task create --dependencies "setup-001"`
+- Validate: `gibraltar-task validate`
 
 ## DOMGuard (Browser Automation)
 
 DOMGuard is available for browser inspection. See `AGENTIC_AI_DOMGUARD_GUIDE.md`.
 - Start Chrome: `chrome --remote-debugging-port=9222`
 - Check connection: `domguard status`
+
+## Adel Assistant (arkachat-assistant/)
+
+Telegram + SimpleX AI assistant powered by the Adel engine (named after Savta Adel).
+Role-aware routing: owner/employee → Scripts Bank → LLM fallback; client → RAG → Draft & Approve (human-in-the-loop).
+
+```bash
+cd arkachat-assistant
+npm install
+cp .env.example .env     # fill OPENROUTER_API_KEY + TELEGRAM_BOT_TOKEN
+npm run dev              # tsx watch src/index.ts
+```
+
+Key files:
+- `src/nanoclaw/orchestrator.ts` — role-aware routing with Gibraltar-Code event emission
+- `src/orchestration/coordinator.ts` — Gibraltar-Code session + state broadcast
+- `src/orchestration/dikestra-tools.ts` — Tool registry: Task, Flow, Api, Shield
+- `src/channels/telegram.ts` — Telegram adapter (Telegraf)
+- `src/channels/arkachat.ts` — SimpleX bridge (long-polls arkachat-proxy)
+
+Environment additions (beyond original Adel):
+| Var | Purpose |
+|-----|---------|
+| `ARKACHAT_PROXY_URL` | Enables SimpleX channel (optional) |
+| `ARKACHAT_BRIDGE_SECRET` | Auth header for proxy requests |
+| `GIBRALTAR_SESSION_NAME` | Gibraltar-Code session (default: `assistant`) |
+
+## Dikestra Orchestrator (libs/dikestra-orchestrator/)
+
+Shared TypeScript library used by all ArkAChat services to coordinate via Gibraltar-Code.
+
+```typescript
+import { createCoordinator, DikestTools } from '@arkachat/dikestra-orchestrator';
+
+const coord = createCoordinator({ sessionName: 'web' });
+coord.setState('web.ready', { ts: Date.now() });
+
+// Read assistant events
+const pending = coord.getState('assistant.draft_pending');
+
+// Spawn a tracked task
+DikestTools.createTask('/data/git/Dikestra-ai/ArkAChat', {
+  title: 'Fix bug', area: 'auth', dependencies: 'setup-001',
+});
+```
+
+## Gibraltar as Orchestrator
+
+All ArkAChat services communicate via **Gibraltar-Code** shared state:
+
+```
+arkachat-web  ←──────────────────────────────→  arkachat-assistant
+  (Next.js)     gibraltar-code state/messages       (Adel Telegram+SimpleX)
+                          ↕
+                  arkachat-proxy (SimpleX / Erlang Nitrogen)
+```
+
+State keys published by the assistant:
+- `assistant.ready` — service up, lists active channels
+- `assistant.routed` — message routed (route, handler, channel, userId)
+- `assistant.draft_pending` — draft awaiting owner approval (draftId, businessId)
+- `assistant.web_query` — query dispatched from web UI
+
+Read from any service or shell: `gibraltar-code state get "assistant.draft_pending"`
+
+Web API: `GET /api/assistant?action=status` and `POST /api/assistant` (see `arkachat-web/src/app/api/assistant/route.ts`)
