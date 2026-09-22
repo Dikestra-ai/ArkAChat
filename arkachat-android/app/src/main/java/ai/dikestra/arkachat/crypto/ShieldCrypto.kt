@@ -127,27 +127,25 @@ class ShieldCrypto(private val context: Context) {
     }
 
     companion object {
-        // Domain-separation label for media key derivation.
-        // MUST stay in sync with arkachat-web (crypto.ts importSharedKey):
-        //   mediaKey = SHA-256(sharedKey || "media")
-        private val MEDIA_KEY_LABEL = "media".toByteArray(Charsets.UTF_8)
+        // Domain-separation label — MUST stay in sync with arkachat-web crypto.ts:
+        //   MEDIA_KEY_LABEL = 'media_key_derivation_v1_pad_32b'
+        //   mediaKey = HMAC-SHA256(sharedKey, label)
+        private const val MEDIA_KEY_LABEL = "media_key_derivation_v1_pad_32b"
 
         /**
          * Deterministically derive the media key from the pairwise shared key.
          *
-         * Both sides of a conversation must derive the same media key from the
-         * same shared key. This mirrors the web client's derivation exactly
-         * (SHA-256 over sharedKey || "media"), so keys agree cross-platform.
+         * Uses HMAC-SHA256(sharedKey, label) — matches the web client exactly
+         * so both sides derive the same media key from the same shared key.
          *
          * NOTE: do NOT derive keys from Shield.quickEncrypt output — that
          * output is randomized (fresh nonce, random padding, timestamp) and
          * yields a different value on every call.
          */
         internal fun deriveMediaKey(sharedKey: ByteArray): ByteArray {
-            val md = java.security.MessageDigest.getInstance("SHA-256")
-            md.update(sharedKey)
-            md.update(MEDIA_KEY_LABEL)
-            return md.digest() // 32 bytes
+            val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+            mac.init(javax.crypto.spec.SecretKeySpec(sharedKey, "HmacSHA256"))
+            return mac.doFinal(MEDIA_KEY_LABEL.toByteArray(Charsets.UTF_8)) // 32 bytes
         }
     }
 
