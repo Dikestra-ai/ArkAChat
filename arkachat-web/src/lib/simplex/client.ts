@@ -184,7 +184,7 @@ export class WebSimplexClient {
     void connectResults; // all settled — connection state already updated
 
     try {
-      const path = selectAndOptimizeRelays(measured);
+      const path = await selectAndOptimizeRelays(measured);
       this.preferredRelayOrder = path.hops.map(h => h.host);
     } catch {
       this.preferredRelayOrder = servers; // fallback: original order
