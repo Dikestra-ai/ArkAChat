@@ -31,6 +31,9 @@ const schema = z.object({
 
   // Gibraltar-Code coordination session name.
   GIBRALTAR_SESSION_NAME: z.string().default('assistant'),
+
+  // Lightweight HTTP API port (CausaDB + Reasoning queries from web layer).
+  ADEL_HTTP_PORT: z.coerce.number().int().positive().default(3333),
 }).superRefine((env, ctx) => {
   if (env.ADEL_STORAGE_BACKEND === 'supabase') {
     if (!env.SUPABASE_URL) {

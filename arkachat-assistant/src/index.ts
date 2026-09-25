@@ -2,12 +2,20 @@ import 'dotenv/config';
 import { startTelegram } from './channels/telegram.js';
 import { startArkaChatBridge } from './channels/arkachat.js';
 import { initOrchestration } from './orchestration/coordinator.js';
+import { startArcHandshake } from './orchestration/arcHandshake.js';
+import { startHttpServer } from './storage/http-server.js';
 import './scripts/index.js';
 import { config } from './config.js';
 
 async function main() {
   // Register this service with Gibraltar-Code for cross-service coordination
   await initOrchestration();
+
+  // CausaDB + Reasoning HTTP API (for web layer queries)
+  startHttpServer();
+
+  // ARC↔ArkAChat cross-session handshake (integration-006)
+  startArcHandshake();
 
   const bot = startTelegram();
 

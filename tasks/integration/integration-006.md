@@ -1,7 +1,7 @@
 ---
 id: integration-006
 title: 'Gibraltar-Code bridge: ArkAChat ↔ ARC session (efe432ef) handshake'
-status: doing
+status: done
 priority: medium
 tags:
 - integration
