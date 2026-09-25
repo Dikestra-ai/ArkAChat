@@ -1,0 +1,9 @@
+{
+  "id": "grapheme-integrator",
+  "name": "grapheme-integrator",
+  "role": "grapheme-core → ArkAChat NLP integration",
+  "pid": 651931,
+  "started_at": "2026-09-25T09:22:53.798509472Z",
+  "last_heartbeat": "2026-09-25T09:22:53.798509472Z",
+  "status": "stale"
+}

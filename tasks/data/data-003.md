@@ -1,7 +1,7 @@
 ---
 id: data-003
 title: 'SEC: Android LOW crypto — decrypted files persist in cache; getSession isInitiator capture; EncryptedPrefs MasterKey unbinding'
-status: todo
+status: done
 priority: low
 tags:
 - data

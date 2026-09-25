@@ -1,7 +1,7 @@
 ---
 id: auth-004
 title: 'SEC: Android biometric CryptoObject binding — bind BiometricPrompt to actual key op, not decorative'
-status: todo
+status: done
 priority: medium
 tags:
 - auth

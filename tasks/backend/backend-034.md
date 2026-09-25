@@ -1,7 +1,7 @@
 ---
 id: backend-034
 title: 'SEC: Web media key mismatch — inviter generates random key, invitee derives from sharedKey (file transfer broken)'
-status: todo
+status: done
 priority: medium
 tags:
 - backend

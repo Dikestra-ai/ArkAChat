@@ -1,31 +1,31 @@
 ---
-id: deployment-008
-title: 'SEC: Proxy redundancy broken — standby crash-loops on boot, primary no heartbeat, split-brain risk'
+id: backend-039
+title: Port Grapheme Memory TSP core → TypeScript (SMP relay path optimizer)
 status: done
 priority: high
 tags:
-- deployment
+- backend
 dependencies:
-- deployment-004
+- integration-006
 assignee: developer
-created: 2026-08-25T21:17:05.398817469Z
-estimate: 8h
-complexity: 3
-area: deployment
+created: 2026-09-25T09:21:14.174264806Z
+estimate: 1d
+complexity: 6
+area: backend
 ---
 
-# SEC: Proxy redundancy broken — standby crash-loops on boot, primary no heartbeat, split-brain risk
+# Port Grapheme Memory TSP core → TypeScript (SMP relay path optimizer)
 
 ## Causation Chain
-> Trace the deployment pipeline: source → build → artifact →
-environment config → runtime injection → health check. Verify actual
-env var usage and fallback defaults in config files.
+> Trace the service orchestration: entry point → dependency injection →
+business logic → side effects → return. Verify actual error propagation
+paths in the codebase.
 
 ## Pre-flight Checks
 - [ ] Read dependency task files for implementation context (Session Handoff)
-- [ ] `grep -r "env\|getenv\|std::env" src/` - Find env var usage
-- [ ] Check actual config file loading order
-- [ ] Verify health check endpoints exist
+- [ ] `grep -r "impl.*Service\|fn.*service" src/` - Find service definitions
+- [ ] Check actual dependency injection patterns
+- [ ] Verify error propagation through service layers
 - [ ] `git log --oneline -10` - Check recent related commits
 
 ## Context

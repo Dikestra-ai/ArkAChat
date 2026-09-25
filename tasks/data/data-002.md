@@ -1,7 +1,7 @@
 ---
 id: data-002
 title: 'SEC: Android deleteAllKeys() is a no-op — account/panic wipe leaves all key material intact'
-status: todo
+status: done
 priority: medium
 tags:
 - data

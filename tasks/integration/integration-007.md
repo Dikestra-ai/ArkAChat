@@ -1,31 +1,32 @@
 ---
-id: deployment-008
-title: 'SEC: Proxy redundancy broken — standby crash-loops on boot, primary no heartbeat, split-brain risk'
+id: integration-007
+title: 'Adel tool: invoke Grapheme for SMP relay recommendations via Gibraltar-Code'
 status: done
-priority: high
+priority: medium
 tags:
-- deployment
+- integration
 dependencies:
-- deployment-004
+- backend-040
+- integration-006
 assignee: developer
-created: 2026-08-25T21:17:05.398817469Z
-estimate: 8h
-complexity: 3
-area: deployment
+created: 2026-09-25T09:21:18.660449256Z
+estimate: 3h
+complexity: 4
+area: integration
 ---
 
-# SEC: Proxy redundancy broken — standby crash-loops on boot, primary no heartbeat, split-brain risk
+# Adel tool: invoke Grapheme for SMP relay recommendations via Gibraltar-Code
 
 ## Causation Chain
-> Trace the deployment pipeline: source → build → artifact →
-environment config → runtime injection → health check. Verify actual
-env var usage and fallback defaults in config files.
+> Trace the integration boundary: our code → serialization → transport →
+external API → response parsing → error mapping. Verify actual retry
+logic and timeout handling in implementation.
 
 ## Pre-flight Checks
 - [ ] Read dependency task files for implementation context (Session Handoff)
-- [ ] `grep -r "env\|getenv\|std::env" src/` - Find env var usage
-- [ ] Check actual config file loading order
-- [ ] Verify health check endpoints exist
+- [ ] `grep -r "fetch\|request\|Client::new" src/` - Find HTTP calls
+- [ ] Check actual retry and timeout configuration
+- [ ] Verify error mapping for external API responses
 - [ ] `git log --oneline -10` - Check recent related commits
 
 ## Context

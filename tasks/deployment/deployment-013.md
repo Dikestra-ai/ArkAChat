@@ -1,7 +1,7 @@
 ---
 id: deployment-013
 title: 'SEC: GitHub Actions pinned by mutable tag not SHA — supply-chain risk on release workflows'
-status: todo
+status: done
 priority: medium
 tags:
 - deployment

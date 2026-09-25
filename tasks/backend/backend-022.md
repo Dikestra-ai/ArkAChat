@@ -1,7 +1,7 @@
 ---
 id: backend-022
 title: 'SEC: TLS for Erlang HTTP server — serve nitrogen UI over HTTPS not plaintext 0.0.0.0:8000'
-status: todo
+status: done
 priority: high
 tags:
 - backend

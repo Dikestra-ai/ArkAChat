@@ -1,7 +1,7 @@
 ---
 id: backend-027
 title: 'SEC: Android ratchet desyncs permanently on single lost/reordered message — no skipped-key cache'
-status: todo
+status: done
 priority: medium
 tags:
 - backend

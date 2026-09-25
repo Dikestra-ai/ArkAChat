@@ -1,7 +1,7 @@
 ---
 id: frontend-017
 title: 'SEC: Desktop Electron IPC keystore handlers have no input validation or key-id allow-listing'
-status: todo
+status: done
 priority: medium
 tags:
 - frontend

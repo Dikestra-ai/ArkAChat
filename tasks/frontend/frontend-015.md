@@ -1,7 +1,7 @@
 ---
 id: frontend-015
 title: 'SEC: Android QR pairing auto-connects with no key-fingerprint confirmation or displayName sanitization'
-status: todo
+status: done
 priority: medium
 tags:
 - frontend

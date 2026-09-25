@@ -1,7 +1,7 @@
 ---
 id: frontend-016
 title: 'SEC: Desktop Electron no navigation lockdown — will-navigate/will-redirect allows frame escape'
-status: todo
+status: done
 priority: medium
 tags:
 - frontend

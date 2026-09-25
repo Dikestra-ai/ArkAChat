@@ -1,7 +1,7 @@
 ---
 id: backend-032
 title: 'SEC: Web ratchet persistence lossy — receive counter reset on reload, send-counter replay risk on crash'
-status: todo
+status: done
 priority: medium
 tags:
 - backend

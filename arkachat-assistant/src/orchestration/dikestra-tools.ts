@@ -7,6 +7,7 @@
  */
 import { execSync } from 'child_process';
 import { emitEvent } from './coordinator.js';
+import { optimizeRelays, type RelayMeasurement } from './graphemeRelay.js';
 
 const ARKACHA_DIR = '/data/git/Dikestra-ai/ArkAChat';
 
@@ -111,6 +112,27 @@ export function shieldEncrypt(plaintext: string, context?: string): ToolResult {
   }
 }
 
+/**
+ * Grapheme relay optimizer — returns minimum-latency hop ordering for SMP relay nodes.
+ *
+ * Input: JSON array of { host, latencyMs, region? } measurements.
+ * The web client should write measured latencies to Gibraltar-Code state key
+ * `arkachat.relay.measurements` and Adel reads from there, or pass inline.
+ *
+ * Example call from a script:
+ *   graphemeRelayOptimize('[{"host":"smp4.simplex.im","latencyMs":45,"region":"us"},...]')
+ */
+export function graphemeRelayOptimize(measurementsJson: string): ToolResult {
+  const t = Date.now();
+  try {
+    const relays: RelayMeasurement[] = JSON.parse(measurementsJson);
+    const result = optimizeRelays(relays);
+    return { ok: true, data: result.explanation, durationMs: Date.now() - t };
+  } catch (err) {
+    return { ok: false, error: String(err), durationMs: Date.now() - t };
+  }
+}
+
 export const tools = {
   createTask,
   doneTask,
@@ -118,4 +140,5 @@ export const tools = {
   parseApiSpec,
   broadcastEvent,
   shieldEncrypt,
+  graphemeRelayOptimize,
 };

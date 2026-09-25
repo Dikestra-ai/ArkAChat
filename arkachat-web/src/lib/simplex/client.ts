@@ -13,6 +13,8 @@
  * https://github.com/simplex-chat/simplexmq/blob/stable/protocol/simplex-messaging.md
  */
 
+import { selectAndOptimizeRelays } from '../routing/relayOptimizer';
+
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 /**
@@ -145,6 +147,7 @@ export class WebSimplexClient {
   private serverConnections = new Map<string, WebSocket>();
   private serverStates = new Map<string, ConnectionState>();
   private globalState: ConnectionState = 'disconnected';
+  private preferredRelayOrder: string[] = [];
 
   private messageCallbacks = new Set<MessageCallback>();
   private stateCallbacks = new Set<StateCallback>();
@@ -169,10 +172,44 @@ export class WebSimplexClient {
 
   /**
    * Connect to multiple SMP servers for redundancy.
+   * Probes relay latencies and uses the Grapheme TSP optimizer to determine
+   * the preferred relay for new queue creation.
    */
   async connect(servers: string[] = PUBLIC_SMP_SERVERS): Promise<void> {
-    const connectPromises = servers.map((server) => this.connectToServer(server));
-    await Promise.allSettled(connectPromises);
+    // Probe latencies and compute optimal relay order in parallel with connecting
+    const [connectResults, measured] = await Promise.all([
+      Promise.allSettled(servers.map((server) => this.connectToServer(server))),
+      this.probeRelayLatencies(servers),
+    ]);
+    void connectResults; // all settled — connection state already updated
+
+    try {
+      const path = selectAndOptimizeRelays(measured);
+      this.preferredRelayOrder = path.hops.map(h => h.host);
+    } catch {
+      this.preferredRelayOrder = servers; // fallback: original order
+    }
+  }
+
+  /** Probe WebSocket open time for each relay and return a latency map. */
+  private probeRelayLatencies(servers: string[]): Promise<Partial<Record<string, number>>> {
+    const measured: Partial<Record<string, number>> = {};
+    const probes = servers.map((server) =>
+      new Promise<void>((resolve) => {
+        const wsUrl = this.proxyUrl
+          ? `${this.proxyUrl}/ws/${server}:5223`
+          : `wss://${server}:5223`;
+        const t0 = performance.now();
+        try {
+          const ws = new WebSocket(wsUrl, ['smp/1']);
+          ws.onopen = () => { measured[server] = performance.now() - t0; ws.close(); resolve(); };
+          ws.onerror = () => resolve();
+          ws.onclose = () => resolve();
+          setTimeout(() => { ws.close(); resolve(); }, 3000);
+        } catch { resolve(); }
+      })
+    );
+    return Promise.allSettled(probes).then(() => measured);
   }
 
   private async connectToServer(server: string): Promise<void> {
@@ -455,11 +492,20 @@ export class WebSimplexClient {
   // Private helpers
 
   private selectServer(): string | undefined {
-    const connected = Array.from(this.serverConnections.keys())
-      .filter((server) => this.serverStates.get(server) === 'connected');
+    const connected = new Set(
+      Array.from(this.serverConnections.keys())
+        .filter((server) => this.serverStates.get(server) === 'connected')
+    );
 
-    if (connected.length === 0) return undefined;
-    return connected[Math.floor(Math.random() * connected.length)];
+    if (connected.size === 0) return undefined;
+
+    // Prefer the Grapheme-optimized relay order (first connected relay in the optimal sequence)
+    for (const host of this.preferredRelayOrder) {
+      if (connected.has(host)) return host;
+    }
+
+    // Fallback: pick any connected relay
+    return Array.from(connected)[0];
   }
 
   private async sendCommandWithResponse(

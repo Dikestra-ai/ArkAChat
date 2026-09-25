@@ -1,7 +1,7 @@
 ---
 id: auth-003
 title: 'SEC: Full group authorization model — sign group control msgs with admin key; shared spec + cross-platform test vectors for Android+Web bridges'
-status: todo
+status: done
 priority: high
 tags:
 - auth

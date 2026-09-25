@@ -1,0 +1,15 @@
+# Gibraltar-Code Configuration
+
+[session]
+heartbeat_interval_ms = 5000    # How often to update heartbeat
+stale_timeout_ms = 30000        # When to consider session dead
+
+[messages]
+max_inbox_size = 100            # Max messages before cleanup
+retention_hours = 24            # How long to keep read messages
+
+[tasks]
+auto_archive_done = true        # Archive completed tasks
+
+[notifications]
+use_signals = true              # Use SIGUSR1 for instant notification

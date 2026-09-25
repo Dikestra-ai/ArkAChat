@@ -1,7 +1,7 @@
 ---
 id: deployment-009
 title: 'SEC: Unsigned APK sideloading via nightly.link — debug APK distributed with no signing or provenance'
-status: todo
+status: done
 priority: high
 tags:
 - deployment

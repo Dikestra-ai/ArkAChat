@@ -1,7 +1,7 @@
 ---
 id: frontend-012
 title: 'SEC: Web passphrase/WebAuthn-PRF unlock — move desktop key decrypt into main process, out of renderer reach'
-status: todo
+status: done
 priority: medium
 tags:
 - frontend

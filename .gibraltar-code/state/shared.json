@@ -1,0 +1,30 @@
+{
+  "arkachat.grapheme.tasks": [
+    "integration-006",
+    "backend-039",
+    "api-001",
+    "backend-040",
+    "integration-007"
+  ],
+  "arkachat.grapheme.status": "tasks_created",
+  "arkachat.ready": {
+    "intent": "grapheme_integration",
+    "peer_uuid": "efe432ef-6791-4739-bc48-ff43d25e5232",
+    "session": "arkachat",
+    "ts": "2026-09-25T00:00:00Z"
+  },
+  "arkachat.grapheme.design": {
+    "algorithm": "HierarchicalCompressor+ParetoMemory",
+    "integration_model": "Grapheme_TSP_as_SMP_relay_optimizer",
+    "relay_as_city": true,
+    "rust_api_planned": true,
+    "session_peer": "efe432ef-6791-4739-bc48-ff43d25e5232",
+    "ts_port_needed": true
+  },
+  "grapheme.integration.status": {
+    "ready": true,
+    "session_id": "c13cf5a1-7d8d-47c7-ae18-0af263e90d39",
+    "source": "/data/git/Dikestra-ai/grapheme-nn/grapheme-core",
+    "target": "arkachat-assistant"
+  }
+}

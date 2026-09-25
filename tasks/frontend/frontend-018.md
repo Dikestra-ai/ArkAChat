@@ -1,7 +1,7 @@
 ---
 id: frontend-018
 title: 'SEC: Desktop Electron silent fallback from OS keychain to in-memory storage on keytar failure'
-status: todo
+status: done
 priority: low
 tags:
 - frontend

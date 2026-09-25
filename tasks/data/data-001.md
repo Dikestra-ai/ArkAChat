@@ -1,7 +1,7 @@
 ---
 id: data-001
 title: 'SEC: SQLCipher migration — encrypt Android Room DB (messages + contact PII currently plaintext)'
-status: todo
+status: done
 priority: high
 tags:
 - data
